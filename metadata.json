@@ -1,0 +1,5 @@
+{
+  "name": "뉴스 기반 블로그 포스트 생성기",
+  "description": "사용자가 키워드를 입력하면 관련 최신 뉴스를 검색하고, 이를 바탕으로 Gemini AI가 자동으로 블로그 포스트를 생성해주는 애플리케이션입니다.",
+  "requestFramePermissions": []
+}
