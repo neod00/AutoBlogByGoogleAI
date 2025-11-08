@@ -4,10 +4,12 @@ import BlogPostDisplay from './components/BlogPostDisplay';
 
 type Theme = 'light' | 'dark';
 type DateRange = 'all' | 'day' | 'week' | 'month' | 'year';
+type Template = 'default' | 'review' | 'interview' | 'qa';
 
 const App: React.FC = () => {
   const [keyword, setKeyword] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange>('all');
+  const [template, setTemplate] = useState<Template>('default');
   const [blogPost, setBlogPost] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -43,7 +45,7 @@ const App: React.FC = () => {
     setBlogPost('');
 
     try {
-      const result = await generateBlogPost(keyword, dateRange);
+      const result = await generateBlogPost(keyword, dateRange, template);
       setBlogPost(result.post);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -52,7 +54,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [keyword, dateRange]);
+  }, [keyword, dateRange, template]);
   
   const LoadingSpinner: React.FC = () => (
     <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -64,7 +66,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 flex flex-col p-4 md:p-8 transition-colors duration-300">
-      <header className="w-full max-w-4xl mx-auto text-center mb-8 relative">
+      <header className="w-full max-w-5xl mx-auto text-center mb-8 relative">
         <h1 className="text-4xl font-bold text-gray-900 dark:text-white">뉴스 기반 블로그 포스트 생성기</h1>
         <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">Gemini AI를 사용하여 최신 뉴스로 블로그 글 자동 생성</p>
         <button
@@ -84,7 +86,7 @@ const App: React.FC = () => {
         </button>
       </header>
 
-      <main className="w-full max-w-4xl mx-auto flex flex-col flex-grow">
+      <main className="w-full max-w-5xl mx-auto flex flex-col flex-grow">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <input
             type="text"
@@ -107,6 +109,18 @@ const App: React.FC = () => {
             <option value="week">지난 1주</option>
             <option value="month">지난 1개월</option>
             <option value="year">지난 1년</option>
+          </select>
+          <select
+            value={template}
+            onChange={(e) => setTemplate(e.target.value as Template)}
+            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
+            disabled={isLoading}
+            aria-label="블로그 템플릿"
+          >
+            <option value="default">기본 뉴스 분석</option>
+            <option value="review">제품/서비스 리뷰</option>
+            <option value="interview">전문가 인터뷰 형식</option>
+            <option value="qa">Q&A 형식</option>
           </select>
           <button
             onClick={handleGenerateClick}
