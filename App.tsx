@@ -4,13 +4,19 @@ import BlogPostDisplay from './components/BlogPostDisplay';
 
 type Theme = 'light' | 'dark';
 type DateRange = 'all' | 'day' | 'week' | 'month' | 'year';
-type Template = 'default' | 'review' | 'interview' | 'qa';
+type Template = 'default' | 'review' | 'interview' | 'qa' | 'investment';
+
+interface BlogResult {
+  title: string;
+  post: string;
+  tags: string[];
+}
 
 const App: React.FC = () => {
   const [keyword, setKeyword] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange>('all');
   const [template, setTemplate] = useState<Template>('default');
-  const [blogPost, setBlogPost] = useState<string>('');
+  const [blogResult, setBlogResult] = useState<BlogResult | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [theme, setTheme] = useState<Theme>('dark');
@@ -42,11 +48,11 @@ const App: React.FC = () => {
     }
     setIsLoading(true);
     setError('');
-    setBlogPost('');
+    setBlogResult(null);
 
     try {
       const result = await generateBlogPost(keyword, dateRange, template);
-      setBlogPost(result.post);
+      setBlogResult(result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`글 생성에 실패했습니다: ${errorMessage}`);
@@ -59,8 +65,8 @@ const App: React.FC = () => {
   const LoadingSpinner: React.FC = () => (
     <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
         <div className="w-12 h-12 border-4 border-t-transparent border-cyan-500 rounded-full animate-spin"></div>
-        <p className="mt-4 text-lg">블로그 글을 생성하고 있습니다...</p>
-        <p className="text-sm">Gemini AI가 최신 뉴스를 검색하고 글을 작성하는 데 시간이 걸릴 수 있습니다.</p>
+        <p className="mt-4 text-lg">블로그 글과 이미지를 생성하고 있습니다...</p>
+        <p className="text-sm">Gemini AI가 최신 뉴스를 검색하고 이미지를 찾는 데 시간이 걸릴 수 있습니다.</p>
     </div>
   );
 
@@ -121,6 +127,7 @@ const App: React.FC = () => {
             <option value="review">제품/서비스 리뷰</option>
             <option value="interview">전문가 인터뷰 형식</option>
             <option value="qa">Q&A 형식</option>
+            <option value="investment">투자전략 보고서</option>
           </select>
           <button
             onClick={handleGenerateClick}
@@ -141,7 +148,7 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex-grow bg-white/50 dark:bg-gray-800/50 rounded-lg shadow-2xl backdrop-blur-sm border border-gray-300 dark:border-gray-700 p-4 min-h-[500px]">
+        <div className="flex-grow bg-white/50 dark:bg-gray-800/50 rounded-lg shadow-2xl backdrop-blur-sm border border-gray-300 dark:border-gray-700 p-0 min-h-[500px] flex flex-col">
           {isLoading ? (
               <LoadingSpinner />
           ) : error ? (
@@ -151,8 +158,8 @@ const App: React.FC = () => {
                     <p>{error}</p>
                 </div>
             </div>
-          ) : blogPost ? (
-            <BlogPostDisplay post={blogPost} />
+          ) : blogResult ? (
+            <BlogPostDisplay title={blogResult.title} post={blogResult.post} tags={blogResult.tags} />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-500">
               <p>키워드를 입력하고 '블로그 글 생성' 버튼을 클릭하여 시작하세요.</p>
