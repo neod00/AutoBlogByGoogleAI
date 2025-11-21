@@ -87,11 +87,15 @@ export default async function handler(req: any, res: any) {
         }
 
         // 3. Construct Email HTML
-        // Assuming the app is hosted at the request's host or a configured domain
-        // For Vercel, req.headers.host usually works
-        const protocol = req.headers['x-forwarded-proto'] || 'http';
-        const host = req.headers.host;
-        const baseUrl = `${protocol}://${host}`;
+        // Use APP_URL env var if set, otherwise fall back to Vercel URL or request host
+        let baseUrl = process.env.APP_URL;
+        if (!baseUrl) {
+            const protocol = req.headers['x-forwarded-proto'] || 'https';
+            const host = req.headers.host;
+            baseUrl = `${protocol}://${host}`;
+        }
+        // Ensure no trailing slash
+        baseUrl = baseUrl.replace(/\/$/, '');
 
         const listItems = titles.map((title, index) => {
             const link = `${baseUrl}/?keyword=${encodeURIComponent(title)}&auto=true`;
