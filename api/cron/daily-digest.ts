@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { sendEmail } from '../../services/emailService';
+import { sendEmail } from '../_services/emailService';
 
 const API_KEY = process.env.API_KEY;
 const GMAIL_USER = process.env.GMAIL_USER;
