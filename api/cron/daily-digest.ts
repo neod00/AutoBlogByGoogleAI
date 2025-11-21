@@ -1,5 +1,31 @@
 import { GoogleGenAI } from "@google/genai";
-import { sendEmail } from '../_services/emailService';
+import nodemailer from 'nodemailer';
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+    },
+});
+
+async function sendEmail(to: string, subject: string, html: string) {
+    const mailOptions = {
+        from: process.env.GMAIL_USER,
+        to,
+        subject,
+        html,
+    };
+
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email sent: ' + info.response);
+        return info;
+    } catch (error) {
+        console.error('Error sending email:', error);
+        throw error;
+    }
+}
 
 const API_KEY = process.env.API_KEY;
 const GMAIL_USER = process.env.GMAIL_USER;
