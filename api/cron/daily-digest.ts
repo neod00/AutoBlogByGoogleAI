@@ -39,7 +39,7 @@ async function getTrendingTitles(topic: string): Promise<string[]> {
 
     const prompt = `
     Find 5 trending news titles related to "${topic}" from the last 24 hours.
-    Return ONLY the titles as a JSON array of strings.
+    Return ONLY the titles as a JSON array of strings. Do not include markdown formatting like \`\`\`json.
     Example: ["Title 1", "Title 2", ...]
   `;
 
@@ -47,7 +47,7 @@ async function getTrendingTitles(topic: string): Promise<string[]> {
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-            responseMimeType: "application/json",
+            // responseMimeType: "application/json", // Cannot use with tools
             tools: [{ googleSearch: {} }],
         },
     });
@@ -56,10 +56,13 @@ async function getTrendingTitles(topic: string): Promise<string[]> {
     if (!text) return [];
 
     try {
-        return JSON.parse(text);
+        // Remove markdown code blocks if present
+        const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleanText);
     } catch (e) {
         console.error("Failed to parse JSON from Gemini", e);
-        return [];
+        // Fallback: try to extract lines that look like titles if JSON fails
+        return text.split('\n').filter(line => line.trim().length > 0).slice(0, 5);
     }
 }
 
