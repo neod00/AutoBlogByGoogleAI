@@ -13,6 +13,7 @@ export interface BlogPostResult {
   title: string;
   post: string;
   tags: string[];
+  imageKeywords?: string[];
 }
 
 interface PexelsPhoto {
@@ -153,23 +154,27 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
       1.  **뉴스 검색**: Google 검색 도구를 사용하여 위 키워드에 대한 ${dateRangePrompt} 뉴스 기사 5개를 찾으세요.
       2.  **내용 분석 및 본문 초안 작성**: 찾은 5개의 뉴스 기사 내용을 종합하고 분석하여, 하나의 완성된 블로그 글 본문 초안을 작성하세요.
       3.  **태그 생성**: 작성한 본문 초안의 내용과 가장 관련성이 높은 키워드 태그 10개를 쉼표(,)로 구분하여 생성해주세요. 예시: AI,반도체,기술,시장동향,NVIDIA,삼성전자,TSMC,미래기술,투자,혁신
-      4.  **(이미지 관련 지시사항 없음)**: **이미지는 절대 직접 생성하거나 삽입하지 마세요.** 오로지 텍스트와 태그만 생성하면 됩니다.
-      5.  **제목 생성**: 완성된 글의 내용을 바탕으로, 사용자의 클릭을 유도할 수 있는 매력적이고(후킹), 검색 엔진 최적화(SEO)에 유리한 제목을 생성해주세요. 제목에는 반드시 핵심 키워드가 포함되어야 합니다.
-      6.  **참고 자료 추가**: 글의 마지막에 '참고 자료'라는 <h2> 제목을 포함하고, 그 아래에 당신이 참고한 뉴스 기사 5개의 제목과 링크를 <ul> 목록으로 반드시 포함해주세요. 각 목록 항목은 <li><a href="뉴스기사_URL" target="_blank" rel="noopener noreferrer">뉴스기사_제목</a></li> 형식이어야 합니다. 예를 들어, 다음과 같은 형식입니다: <li><a href="https://example.com/news-article-1" target="_blank" rel="noopener noreferrer">AI 반도체 시장의 최신 동향</a></li>
-      7.  **공통 규칙**:
+      4.  **이미지 검색 키워드 생성**: 블로그 글의 내용과 어울리는 이미지를 찾기 위한 **영어 검색 키워드** 3개를 생성해주세요. 이 키워드는 Pexels 이미지 검색에 사용됩니다. 글의 주제, 분위기, 핵심 개념을 잘 나타내는 구체적인 영어 단어나 구문을 사용하세요. 예시: government support,financial aid,Korean economy 또는 AI chip,semiconductor factory,technology innovation
+      5.  **(이미지 관련 지시사항 없음)**: **이미지는 절대 직접 생성하거나 삽입하지 마세요.** 오로지 텍스트와 태그만 생성하면 됩니다.
+      6.  **제목 생성**: 완성된 글의 내용을 바탕으로, 사용자의 클릭을 유도할 수 있는 매력적이고(후킹), 검색 엔진 최적화(SEO)에 유리한 제목을 생성해주세요. 제목에는 반드시 핵심 키워드가 포함되어야 합니다.
+      7.  **참고 자료 추가**: 글의 마지막에 '참고 자료'라는 <h2> 제목을 포함하고, 그 아래에 당신이 참고한 뉴스 기사 5개의 제목과 링크를 <ul> 목록으로 반드시 포함해주세요. 각 목록 항목은 <li><a href="뉴스기사_URL" target="_blank" rel="noopener noreferrer">뉴스기사_제목</a></li> 형식이어야 합니다. 예를 들어, 다음과 같은 형식입니다: <li><a href="https://example.com/news-article-1" target="_blank" rel="noopener noreferrer">AI 반도체 시장의 최신 동향</a></li>
+      8.  **공통 규칙**:
           -   **언어**: 글은 반드시 한국어로 작성해야 합니다.
           -   **분량**: 글의 본문 길이는 3,000자에서 4,000자 사이여야 합니다.
           -   **본문 형식**: 글의 본문은 HTML 형식이어야 합니다. <html>, <head>, <body> 태그는 제외하고, 글의 본문에 해당하는 HTML 태그(예: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <blockquote> 등)만 사용해주세요. 인라인 CSS는 꼭 필요한 경우(예: 이미지 스타일링)에만 최소한으로 사용하세요.
-      8.  **최종 결과물 형식**: 작업 완료 후, 글 제목, 본문, 태그를 각각 [TITLE], [POST], [TAGS] 섹션으로 구분하여 아래 형식에 맞춰 정확하게 반환해주세요. 다른 설명이나 추가 텍스트 없이 이 형식만 반환해야 합니다.
+      9.  **최종 결과물 형식**: 작업 완료 후, 글 제목, 본문, 태그, 이미지 키워드를 각각 [TITLE], [POST], [TAGS], [IMAGE_KEYWORDS] 섹션으로 구분하여 아래 형식에 맞춰 정확하게 반환해주세요. 다른 설명이나 추가 텍스트 없이 이 형식만 반환해야 합니다.
 [TITLE]
-여기에 5번 단계에서 생성한 제목을 넣어주세요.
+여기에 6번 단계에서 생성한 제목을 넣어주세요.
 [/TITLE]
 [POST]
-여기에 4번 단계에서 완성한 HTML 본문을 넣어주세요.
+여기에 5번 단계에서 완성한 HTML 본문을 넣어주세요.
 [/POST]
 [TAGS]
 여기에 3번 단계에서 생성한 태그 목록을 넣어주세요.
 [/TAGS]
+[IMAGE_KEYWORDS]
+여기에 4번 단계에서 생성한 영어 이미지 검색 키워드를 쉼표로 구분하여 넣어주세요.
+[/IMAGE_KEYWORDS]
     `;
 
   switch (template) {
@@ -289,11 +294,14 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     const titleMatch = rawText.match(/\[TITLE\]([\s\S]*?)\[\/TITLE\]/);
     const postMatch = rawText.match(/\[POST\]([\s\S]*?)\[\/POST\]/);
     const tagsMatch = rawText.match(/\[TAGS\]([\s\S]*?)\[\/TAGS\]/);
+    const imageKeywordsMatch = rawText.match(/\[IMAGE_KEYWORDS\]([\s\S]*?)\[\/IMAGE_KEYWORDS\]/);
 
     let title = titleMatch ? titleMatch[1].trim() : '';
     let post = postMatch ? postMatch[1].trim() : '';
     const tagsString = tagsMatch ? tagsMatch[1].trim() : '';
     const tags = tagsString.split(',').map(tag => tag.trim()).filter(Boolean);
+    const imageKeywordsString = imageKeywordsMatch ? imageKeywordsMatch[1].trim() : '';
+    const imageKeywords = imageKeywordsString.split(',').map(kw => kw.trim()).filter(Boolean);
 
     // If the response doesn't follow the expected format, handle it gracefully.
     if (!titleMatch && !postMatch && !tagsMatch) {
@@ -328,14 +336,26 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
 
     // --- Image Injection Logic ---
     let images: PexelsPhoto[] = [];
-    if (tags.length > 0) {
-      // Use the first tag as the primary search query, or combine top 2 if general
-      // Using just one primary keyword usually yields better results than a long string
+    
+    // Priority 1: Use AI-generated English image keywords for better Pexels results
+    if (imageKeywords.length > 0) {
+      // Try each image keyword until we get results
+      for (const imgKeyword of imageKeywords) {
+        images = await fetchImagesFromPexels(imgKeyword);
+        if (images.length > 0) {
+          console.log(`Found images using keyword: ${imgKeyword}`);
+          break;
+        }
+      }
+    }
+
+    // Priority 2: Fallback to Korean tags if no images found
+    if (images.length === 0 && tags.length > 0) {
       const searchQuery = tags[0];
       images = await fetchImagesFromPexels(searchQuery);
     }
 
-    // If no tags or fetch failed, fallback to keyword
+    // Priority 3: Final fallback to original keyword
     if (images.length === 0) {
       images = await fetchImagesFromPexels(keyword);
     }
@@ -395,7 +415,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       }
     }
 
-    return { title, post, tags: tags.slice(0, 10) };
+    return { title, post, tags: tags.slice(0, 10), imageKeywords };
 
   } catch (error) {
     console.error("Error generating blog post with Gemini:", error);
