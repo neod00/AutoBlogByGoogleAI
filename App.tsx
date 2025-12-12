@@ -42,37 +42,34 @@ const App: React.FC = () => {
   };
 
   // Auto-start generation if query params exist
+  const autoStartRef = React.useRef(false);
+
   useEffect(() => {
+    if (autoStartRef.current) return;
+
     const params = new URLSearchParams(window.location.search);
     const keywordParam = params.get('keyword');
     const autoParam = params.get('auto');
 
-    if (keywordParam && autoParam === 'true') {
+    console.log('Auto-start check:', { keywordParam, autoParam });
+
+    if (keywordParam && (autoParam === 'true' || autoParam === '1')) {
+      autoStartRef.current = true;
       setKeyword(keywordParam);
-      // We need to trigger generation, but handleGenerateClick depends on state that might not be updated yet if we just call it.
-      // However, since we are setting keyword here, we can pass it directly or use a ref.
-      // Better yet, let's just call a function that takes the keyword as an arg, or rely on a separate effect.
-      // For simplicity in this existing structure, let's use a timeout to ensure state update or just call the service directly if we refactor.
-      // But since handleGenerateClick uses the 'keyword' state, we should wait for it to update.
-      // Actually, the cleanest way without major refactor is to call generate with the param directly.
 
-      // Let's modify handleGenerateClick to accept an optional keyword override, 
-      // OR just create a separate internal function. 
-      // For now, let's use a simple approach: set state and then trigger.
-      // But React state updates are async.
-
-      // Let's just call the internal logic directly here.
       (async () => {
+        console.log('Starting auto-generation for:', keywordParam);
         setIsLoading(true);
         setError('');
         setBlogResult(null);
         try {
-          const result = await generateBlogPost(keywordParam, 'all', 'default'); // Default settings for auto-gen
+          const result = await generateBlogPost(keywordParam, 'all', 'default');
+          console.log('Auto-generation result:', result);
           setBlogResult(result);
         } catch (err) {
+          console.error('Auto-generation error:', err);
           const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
           setError(`글 생성에 실패했습니다: ${errorMessage}`);
-          console.error(err);
         } finally {
           setIsLoading(false);
         }

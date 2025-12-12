@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 const API_KEY = process.env.API_KEY;
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 
 if (!API_KEY) {
   throw new Error("API_KEY environment variable not set");
@@ -9,26 +10,150 @@ if (!API_KEY) {
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 export interface BlogPostResult {
-    title: string;
-    post: string;
-    tags: string[];
+  title: string;
+  post: string;
+  tags: string[];
+}
+
+interface PexelsPhoto {
+  id: number;
+  width: number;
+  height: number;
+  url: string;
+  photographer: string;
+  photographer_url: string;
+  photographer_id: number;
+  avg_color: string;
+  src: {
+    original: string;
+    large2x: string;
+    large: string;
+    medium: string;
+    small: string;
+    portrait: string;
+    landscape: string;
+    tiny: string;
+  };
+  alt: string;
+}
+
+interface PexelsResponse {
+  total_results: number;
+  page: number;
+  per_page: number;
+  photos: PexelsPhoto[];
+  next_page?: string;
+}
+
+/**
+ * Validates and checks if Pexels API Key is available
+ */
+function isPexelsConfigured(): boolean {
+  return !!PEXELS_API_KEY;
+}
+
+/**
+ * Fetches images from Pexels API based on a query
+ */
+async function fetchImagesFromPexels(query: string, count: number = 3): Promise<PexelsPhoto[]> {
+  if (!isPexelsConfigured()) {
+    console.warn("PEXELS_API_KEY is not set. Skipping image fetch.");
+    return [];
+  }
+
+  try {
+    const response = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&locale=ko-KR`, {
+      headers: {
+        Authorization: PEXELS_API_KEY!,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Pexels API Error: ${response.status} ${response.statusText}`);
+    }
+
+    const data: PexelsResponse = await response.json();
+    return data.photos || [];
+  } catch (error) {
+    console.error("Failed to fetch images from Pexels:", error);
+    return [];
+  }
+}
+
+/**
+ * Stage 2: Extract title from the raw AI response content
+ * Tries multiple strategies to find a suitable title
+ */
+function extractTitleFromContent(rawText: string, post: string): string {
+  // Try to find H1 tag in the content
+  const h1Match = post.match(/<h1[^>]*>(.*?)<\/h1>/i);
+  if (h1Match && h1Match[1].trim()) {
+    return h1Match[1].trim().replace(/<[^>]*>/g, ''); // Remove any HTML tags
+  }
+
+  // Try to find the first H2 tag as a fallback
+  const h2Match = post.match(/<h2[^>]*>(.*?)<\/h2>/i);
+  if (h2Match && h2Match[1].trim()) {
+    return h2Match[1].trim().replace(/<[^>]*>/g, '');
+  }
+
+  // Try to extract the first line from raw text that looks like a title
+  const lines = rawText.split('\n').map(line => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    // Skip lines that are tags like [TITLE], [POST], etc.
+    if (line.match(/^\[\/?\w+\]$/)) continue;
+
+    // Skip lines that are HTML tags
+    if (line.match(/^<\/?[\w\s="':;.#-\/\?\&]+>$/)) continue;
+
+    // If the line is reasonably short (title-like) and doesn't start with HTML
+    if (line.length > 10 && line.length < 150 && !line.startsWith('<')) {
+      const plainText = line.replace(/<[^>]*>/g, '').trim();
+      if (plainText.length > 10) {
+        return plainText;
+      }
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Stage 3: Generate meaningful fallback title based on keyword and content
+ */
+function generateFallbackTitle(keyword: string, post: string): string {
+  // Extract some context from the post to make the title more meaningful
+  const textContent = post.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Common patterns for generating contextual titles
+  const templates = [
+    `${keyword}: 최신 동향과 분석`,
+    `${keyword}에 대한 모든 것`,
+    `${keyword} 완벽 가이드`,
+    `알아야 할 ${keyword} 핵심 정보`,
+    `${keyword} 시장 분석 리포트`
+  ];
+
+  // Try to detect the type of content and choose appropriate template
+  if (textContent.includes('투자') || textContent.includes('시장')) {
+    return `${keyword} 시장 동향 및 투자 전망`;
+  } else if (textContent.includes('기술') || textContent.includes('혁신')) {
+    return `${keyword}: 기술 혁신과 미래 전망`;
+  } else if (textContent.includes('리뷰') || textContent.includes('장점') || textContent.includes('단점')) {
+    return `${keyword} 심층 분석 및 리뷰`;
+  }
+
+  // Default: Use the first template
+  return templates[0];
 }
 
 function getPrompt(keyword: string, dateRangePrompt: string, template: string): string {
-    const commonInstructions = `
+  const commonInstructions = `
       작업 지시사항 (아래 순서를 반드시 지켜주세요):
       1.  **뉴스 검색**: Google 검색 도구를 사용하여 위 키워드에 대한 ${dateRangePrompt} 뉴스 기사 5개를 찾으세요.
-      2.  **내용 분석 및 본문 초안 작성**: 찾은 5개의 뉴스 기사 내용을 종합하고 분석하여, 하나의 완성된 블로그 글 본문 초안을 작성하세요. **이 단계에서는 아직 이미지를 삽입하지 마세요.**
+      2.  **내용 분석 및 본문 초안 작성**: 찾은 5개의 뉴스 기사 내용을 종합하고 분석하여, 하나의 완성된 블로그 글 본문 초안을 작성하세요.
       3.  **태그 생성**: 작성한 본문 초안의 내용과 가장 관련성이 높은 키워드 태그 10개를 쉼표(,)로 구분하여 생성해주세요. 예시: AI,반도체,기술,시장동향,NVIDIA,삼성전자,TSMC,미래기술,투자,혁신
-      4.  **이미지 검색 및 삽입**: **방금 생성한 태그 10개 중에서 가장 핵심적이고 대표적인 태그 3개를 선정하세요.** 그 3개의 태그를 검색어로 사용하여 글의 내용과 흐름에 어울리는 고품질의 이미지를 **오직 Pexels (www.pexels.com) 에서만** 2~3개 찾으세요. 찾은 이미지를 2번 단계에서 작성한 본문 초안의 중간중간에 자연스럽게 삽입하여 본문을 완성하세요. **Pexels 이외의 다른 이미지 소스(Unsplash, Wikimedia Commons 등)는 절대 사용하지 마세요.** 이미지는 반드시 HTML \`<figure>\` 태그를 사용하여 아래와 같은 Pexels 출처 표기 형식으로 삽입하고, **Pexels의 사진 작가 이름과 URL을 정확하게 표기**해야 합니다.
-          \`\`\`html
-          <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
-              <img src="VALID_PEXELS_IMAGE_URL" alt="이미지에 대한 상세하고 구체적인 설명" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
-              <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
-                  Photo by <a href="PEXELS_PHOTOGRAPHER_URL" target="_blank" rel="noopener noreferrer">PHOTOGRAPHER_NAME</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
-              </figcaption>
-          </figure>
-          \`\`\`
+      4.  **(이미지 관련 지시사항 없음)**: **이미지는 절대 직접 생성하거나 삽입하지 마세요.** 오로지 텍스트와 태그만 생성하면 됩니다.
       5.  **제목 생성**: 완성된 글의 내용을 바탕으로, 사용자의 클릭을 유도할 수 있는 매력적이고(후킹), 검색 엔진 최적화(SEO)에 유리한 제목을 생성해주세요. 제목에는 반드시 핵심 키워드가 포함되어야 합니다.
       6.  **참고 자료 추가**: 글의 마지막에 '참고 자료'라는 <h2> 제목을 포함하고, 그 아래에 당신이 참고한 뉴스 기사 5개의 제목과 링크를 <ul> 목록으로 반드시 포함해주세요. 각 목록 항목은 <li><a href="뉴스기사_URL" target="_blank" rel="noopener noreferrer">뉴스기사_제목</a></li> 형식이어야 합니다. 예를 들어, 다음과 같은 형식입니다: <li><a href="https://example.com/news-article-1" target="_blank" rel="noopener noreferrer">AI 반도체 시장의 최신 동향</a></li>
       7.  **공통 규칙**:
@@ -47,9 +172,9 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
 [/TAGS]
     `;
 
-    switch (template) {
-        case 'review':
-            return `
+  switch (template) {
+    case 'review':
+      return `
               당신은 전문 테크/제품 리뷰어입니다. 사용자가 제공한 키워드와 관련된 제품 또는 서비스에 대한 심층 리뷰 블로그 글을 작성해야 합니다.
 
               키워드: "${keyword}"
@@ -64,8 +189,8 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
 
               ${commonInstructions}
             `;
-        case 'interview':
-            return `
+    case 'interview':
+      return `
               당신은 전문 IT 저널리스트입니다. 사용자가 제공한 키워드 분야의 가상 전문가와 진행하는 인터뷰 형식의 블로그 글을 작성해야 합니다.
 
               키워드: "${keyword}"
@@ -81,8 +206,8 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
 
               ${commonInstructions}
             `;
-        case 'qa':
-            return `
+    case 'qa':
+      return `
               당신은 특정 주제에 대해 독자의 궁금증을 풀어주는 전문 지식 블로거입니다. 사용자가 제공한 키워드에 대해 독자들이 가장 궁금해할 만한 질문과 답변(Q&A) 형식의 블로그 글을 작성해야 합니다.
 
               키워드: "${keyword}"
@@ -98,8 +223,8 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
 
               ${commonInstructions}
             `;
-        case 'investment':
-            return `
+    case 'investment':
+      return `
               당신은 전문 금융 애널리스트입니다. 사용자가 제공한 키워드와 관련된 최신 뉴스들을 분석하여, 전문적인 투자 전략 보고서를 작성해야 합니다.
 
               키워드: "${keyword}"
@@ -115,16 +240,16 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
 
               ${commonInstructions}
             `;
-        case 'default':
-        default:
-            return `
+    case 'default':
+    default:
+      return `
               당신은 전문 블로그 작가입니다. 사용자가 제공한 키워드와 관련된 블로그 글을 작성해야 합니다.
 
               키워드: "${keyword}"
 
               ${commonInstructions}
             `;
-    }
+  }
 }
 
 
@@ -147,7 +272,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       dateRangePrompt = '최신';
       break;
   }
-  
+
   const prompt = getPrompt(keyword, dateRangePrompt, template);
 
   try {
@@ -155,12 +280,12 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
-        tools: [{googleSearch: {}}],
+        tools: [{ googleSearch: {} }],
       },
     });
-    
+
     const rawText = response.text;
-    
+
     const titleMatch = rawText.match(/\[TITLE\]([\s\S]*?)\[\/TITLE\]/);
     const postMatch = rawText.match(/\[POST\]([\s\S]*?)\[\/POST\]/);
     const tagsMatch = rawText.match(/\[TAGS\]([\s\S]*?)\[\/TAGS\]/);
@@ -168,6 +293,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     let title = titleMatch ? titleMatch[1].trim() : '';
     let post = postMatch ? postMatch[1].trim() : '';
     const tagsString = tagsMatch ? tagsMatch[1].trim() : '';
+    const tags = tagsString.split(',').map(tag => tag.trim()).filter(Boolean);
 
     // If the response doesn't follow the expected format, handle it gracefully.
     if (!titleMatch && !postMatch && !tagsMatch) {
@@ -175,33 +301,106 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       post = rawText;
       title = keyword; // Use the keyword as a fallback title.
     } else {
-      // If some tags are missing, try to construct a reasonable result.
-      if (!title) {
-        title = '제목을 생성하지 못했습니다.';
-      }
+      // If post is missing, try to extract it by removing other known tags.
       if (!post) {
-        // If post is missing, it's the most critical part.
-        // Let's try to extract it by removing other known tags.
         post = rawText
           .replace(/\[TITLE\][\s\S]*?\[\/TITLE\]/, '')
           .replace(/\[TAGS\][\s\S]*?\[\/TAGS\]/, '')
           .trim();
-        
-        // If it's still empty, it's better to show an error message.
+
+        // If it's still empty, show an error message.
         if (!post) {
-            post = '<p>블로그 본문을 생성하는 데 실패했습니다. AI가 예상치 못한 형식으로 응답했을 수 있습니다. 다른 키워드나 옵션으로 다시 시도해 보세요.</p>';
+          post = '<p>블로그 본문을 생성하는 데 실패했습니다. AI가 예상치 못한 형식으로 응답했을 수 있습니다. 다른 키워드나 옵션으로 다시 시도해 보세요.</p>';
+        }
+      }
+
+      // Enhanced title extraction with multi-stage fallback
+      if (!title) {
+        // Stage 2: Try to extract title from the generated content
+        title = extractTitleFromContent(rawText, post);
+
+        // Stage 3: Generate meaningful fallback title if extraction failed
+        if (!title) {
+          title = generateFallbackTitle(keyword, post);
         }
       }
     }
-    
-    const tags = tagsString.split(',').map(tag => tag.trim()).filter(Boolean);
+
+    // --- Image Injection Logic ---
+    let images: PexelsPhoto[] = [];
+    if (tags.length > 0) {
+      // Use the first tag as the primary search query, or combine top 2 if general
+      // Using just one primary keyword usually yields better results than a long string
+      const searchQuery = tags[0];
+      images = await fetchImagesFromPexels(searchQuery);
+    }
+
+    // If no tags or fetch failed, fallback to keyword
+    if (images.length === 0) {
+      images = await fetchImagesFromPexels(keyword);
+    }
+
+    if (images.length > 0) {
+      // Insert images into the post
+      // Strategy: Split content by paragraphs and insert images evenly spaced
+      const paragraphs = post.split('</p>');
+
+      // Calculate insertion points (e.g., after 20%, 50%, 80% of paragraphs)
+      // We have max 3 images
+      const totalParagraphs = paragraphs.length;
+      if (totalParagraphs > 3) {
+        let injectedPost = '';
+        let imageIndex = 0;
+
+        // Distribution logic
+        const points = [
+          Math.floor(totalParagraphs * 0.2),
+          Math.floor(totalParagraphs * 0.5),
+          Math.floor(totalParagraphs * 0.8)
+        ];
+
+        for (let i = 0; i < paragraphs.length; i++) {
+          injectedPost += paragraphs[i] + '</p>';
+
+          if (images[imageIndex] && points.includes(i + 1)) {
+            const img = images[imageIndex];
+            const imgHtml = `
+              <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
+                <img src="${img.src.large}" alt="${img.alt || keyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
+                <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
+                  Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
+                </figcaption>
+              </figure>
+            `;
+            injectedPost += imgHtml;
+            imageIndex++;
+          }
+        }
+        post = injectedPost;
+      } else {
+        // Content is too short, just append one image at the top or bottom?
+        // Let's append one after the first paragraph if it exists
+        if (paragraphs.length >= 1) {
+          const img = images[0];
+          const imgHtml = `
+              <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
+                <img src="${img.src.large}" alt="${img.alt || keyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
+                <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
+                  Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
+                </figcaption>
+              </figure>
+            `;
+          post = paragraphs[0] + '</p>' + imgHtml + paragraphs.slice(1).join('</p>');
+        }
+      }
+    }
 
     return { title, post, tags: tags.slice(0, 10) };
 
   } catch (error) {
     console.error("Error generating blog post with Gemini:", error);
     if (error instanceof Error) {
-        throw new Error(`블로그 글 생성 중 오류 발생: ${error.message}`);
+      throw new Error(`블로그 글 생성 중 오류 발생: ${error.message}`);
     }
     throw new Error("알 수 없는 오류가 발생했습니다.");
   }
