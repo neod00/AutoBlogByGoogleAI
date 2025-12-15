@@ -12,6 +12,8 @@ interface BlogResult {
   title: string;
   post: string;
   tags: string[];
+  imageKeywords?: string[];
+  originalPost?: string; // 이미지가 없는 원본 포스트
 }
 
 interface PendingBlogResult extends BlogResult {
@@ -136,7 +138,9 @@ const App: React.FC = () => {
       setBlogResult({
         title: pendingBlogResult.title,
         post: postWithImages,
-        tags: pendingBlogResult.tags
+        tags: pendingBlogResult.tags,
+        imageKeywords: imageKeywords,
+        originalPost: pendingBlogResult.post // 원본 포스트 저장
       });
       setPendingBlogResult(null);
       setGenerationPhase('complete');
@@ -146,7 +150,9 @@ const App: React.FC = () => {
       setBlogResult({
         title: pendingBlogResult.title,
         post: pendingBlogResult.post,
-        tags: pendingBlogResult.tags
+        tags: pendingBlogResult.tags,
+        imageKeywords: imageKeywords,
+        originalPost: pendingBlogResult.post
       });
       setPendingBlogResult(null);
       setGenerationPhase('complete');
@@ -160,11 +166,30 @@ const App: React.FC = () => {
     setBlogResult({
       title: pendingBlogResult.title,
       post: pendingBlogResult.post,
-      tags: pendingBlogResult.tags
+      tags: pendingBlogResult.tags,
+      imageKeywords: [],
+      originalPost: pendingBlogResult.post
     });
     setPendingBlogResult(null);
     setGenerationPhase('complete');
   }, [pendingBlogResult]);
+
+  const handleRegenerateImages = useCallback(() => {
+    if (!blogResult) return;
+    
+    // 이미지 재생성을 위해 pendingBlogResult로 되돌림
+    // <figure> 태그와 그 내용을 모두 제거
+    const originalPost = blogResult.originalPost || blogResult.post.replace(/<figure[\s\S]*?<\/figure>/gi, '').replace(/\s*\n\s*\n\s*/g, '\n').trim();
+    
+    setPendingBlogResult({
+      title: blogResult.title,
+      post: originalPost,
+      tags: blogResult.tags,
+      imageKeywords: blogResult.imageKeywords || []
+    });
+    setBlogResult(null);
+    setGenerationPhase('awaitingImageConfirmation');
+  }, [blogResult]);
 
   const LoadingSpinner: React.FC<{ phase: GenerationPhase }> = ({ phase }) => (
     <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
@@ -292,7 +317,12 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : blogResult ? (
-            <BlogPostDisplay title={blogResult.title} post={blogResult.post} tags={blogResult.tags} />
+            <BlogPostDisplay 
+              title={blogResult.title} 
+              post={blogResult.post} 
+              tags={blogResult.tags}
+              onRegenerateImages={blogResult.imageKeywords && blogResult.imageKeywords.length > 0 ? handleRegenerateImages : undefined}
+            />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-500">
               <p>키워드를 입력하고 '블로그 글 생성' 버튼을 클릭하여 시작하세요.</p>

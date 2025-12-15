@@ -4,6 +4,7 @@ interface BlogPostDisplayProps {
   title: string;
   post: string;
   tags: string[];
+  onRegenerateImages?: () => void;
 }
 
 interface StyleButtonProps {
@@ -26,7 +27,7 @@ const StyleButton: React.FC<StyleButtonProps> = ({ onClick, isActive, children }
 );
 
 
-const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags }) => {
+const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, onRegenerateImages }) => {
   const [copyStatus, setCopyStatus] = useState({
     body: '블로그용 복사',
     full: '전체 파일로 복사',
@@ -210,8 +211,20 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags }) 
           </div>
         </div>
 
-        {/* Copy Buttons */}
+        {/* Copy Buttons and Image Regenerate */}
         <div className="flex gap-2">
+          {onRegenerateImages && (
+            <button
+              onClick={onRegenerateImages}
+              className="bg-indigo-500 text-white hover:bg-indigo-600 font-semibold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
+              aria-label="이미지 재생성"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              이미지 재생성
+            </button>
+          )}
           <button
             onClick={handleCopyBodyOnly}
             className="bg-cyan-500 text-white hover:bg-cyan-600 font-semibold py-2 px-4 rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
