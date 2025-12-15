@@ -334,87 +334,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       }
     }
 
-    // --- Image Injection Logic ---
-    let images: PexelsPhoto[] = [];
-    
-    // Priority 1: Use AI-generated English image keywords for better Pexels results
-    if (imageKeywords.length > 0) {
-      // Try each image keyword until we get results
-      for (const imgKeyword of imageKeywords) {
-        images = await fetchImagesFromPexels(imgKeyword);
-        if (images.length > 0) {
-          console.log(`Found images using keyword: ${imgKeyword}`);
-          break;
-        }
-      }
-    }
-
-    // Priority 2: Fallback to Korean tags if no images found
-    if (images.length === 0 && tags.length > 0) {
-      const searchQuery = tags[0];
-      images = await fetchImagesFromPexels(searchQuery);
-    }
-
-    // Priority 3: Final fallback to original keyword
-    if (images.length === 0) {
-      images = await fetchImagesFromPexels(keyword);
-    }
-
-    if (images.length > 0) {
-      // Insert images into the post
-      // Strategy: Split content by paragraphs and insert images evenly spaced
-      const paragraphs = post.split('</p>');
-
-      // Calculate insertion points (e.g., after 20%, 50%, 80% of paragraphs)
-      // We have max 3 images
-      const totalParagraphs = paragraphs.length;
-      if (totalParagraphs > 3) {
-        let injectedPost = '';
-        let imageIndex = 0;
-
-        // Distribution logic
-        const points = [
-          Math.floor(totalParagraphs * 0.2),
-          Math.floor(totalParagraphs * 0.5),
-          Math.floor(totalParagraphs * 0.8)
-        ];
-
-        for (let i = 0; i < paragraphs.length; i++) {
-          injectedPost += paragraphs[i] + '</p>';
-
-          if (images[imageIndex] && points.includes(i + 1)) {
-            const img = images[imageIndex];
-            const imgHtml = `
-              <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
-                <img src="${img.src.large}" alt="${img.alt || keyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
-                <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
-                  Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
-                </figcaption>
-              </figure>
-            `;
-            injectedPost += imgHtml;
-            imageIndex++;
-          }
-        }
-        post = injectedPost;
-      } else {
-        // Content is too short, just append one image at the top or bottom?
-        // Let's append one after the first paragraph if it exists
-        if (paragraphs.length >= 1) {
-          const img = images[0];
-          const imgHtml = `
-              <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
-                <img src="${img.src.large}" alt="${img.alt || keyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
-                <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
-                  Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
-                </figcaption>
-              </figure>
-            `;
-          post = paragraphs[0] + '</p>' + imgHtml + paragraphs.slice(1).join('</p>');
-        }
-      }
-    }
-
+    // Return blog post without images - images will be added separately via fetchAndInjectImages
     return { title, post, tags: tags.slice(0, 10), imageKeywords };
 
   } catch (error) {
@@ -424,4 +344,94 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     }
     throw new Error("알 수 없는 오류가 발생했습니다.");
   }
+}
+
+/**
+ * Fetches images from Pexels using the provided keywords and injects them into the post
+ * @param post - The HTML blog post content
+ * @param imageKeywords - Array of English keywords to search for images
+ * @param fallbackKeyword - Fallback keyword (original Korean keyword) if no images found
+ * @returns The post with images injected
+ */
+export async function fetchAndInjectImages(
+  post: string,
+  imageKeywords: string[],
+  fallbackKeyword: string
+): Promise<{ post: string; imagesFound: boolean }> {
+  if (!isPexelsConfigured()) {
+    console.warn("PEXELS_API_KEY is not set. Skipping image fetch.");
+    return { post, imagesFound: false };
+  }
+
+  let images: PexelsPhoto[] = [];
+
+  // Priority 1: Use provided image keywords
+  if (imageKeywords.length > 0) {
+    for (const imgKeyword of imageKeywords) {
+      images = await fetchImagesFromPexels(imgKeyword);
+      if (images.length > 0) {
+        console.log(`Found images using keyword: ${imgKeyword}`);
+        break;
+      }
+    }
+  }
+
+  // Priority 2: Final fallback to original keyword
+  if (images.length === 0) {
+    images = await fetchImagesFromPexels(fallbackKeyword);
+  }
+
+  if (images.length === 0) {
+    return { post, imagesFound: false };
+  }
+
+  // Insert images into the post
+  const paragraphs = post.split('</p>');
+  const totalParagraphs = paragraphs.length;
+
+  if (totalParagraphs > 3) {
+    let injectedPost = '';
+    let imageIndex = 0;
+
+    const points = [
+      Math.floor(totalParagraphs * 0.2),
+      Math.floor(totalParagraphs * 0.5),
+      Math.floor(totalParagraphs * 0.8)
+    ];
+
+    for (let i = 0; i < paragraphs.length; i++) {
+      injectedPost += paragraphs[i] + '</p>';
+
+      if (images[imageIndex] && points.includes(i + 1)) {
+        const img = images[imageIndex];
+        const imgHtml = `
+          <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
+            <img src="${img.src.large}" alt="${img.alt || fallbackKeyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
+            <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
+              Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
+            </figcaption>
+          </figure>
+        `;
+        injectedPost += imgHtml;
+        imageIndex++;
+      }
+    }
+    return { post: injectedPost, imagesFound: true };
+  } else {
+    // Content is too short, just append one image after the first paragraph
+    if (paragraphs.length >= 1) {
+      const img = images[0];
+      const imgHtml = `
+          <figure style="margin: 2.5em 0; text-align: center; clear: both; page-break-inside: avoid;">
+            <img src="${img.src.large}" alt="${img.alt || fallbackKeyword}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" />
+            <figcaption style="font-size: 0.85em; color: #888; margin-top: 0.7em;">
+              Photo by <a href="${img.photographer_url}" target="_blank" rel="noopener noreferrer">${img.photographer}</a> on <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>
+            </figcaption>
+          </figure>
+        `;
+      return { post: paragraphs[0] + '</p>' + imgHtml + paragraphs.slice(1).join('</p>'), imagesFound: true };
+    }
+  }
+
+  return { post, imagesFound: false };
 }
