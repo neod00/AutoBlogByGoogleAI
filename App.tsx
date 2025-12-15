@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { generateBlogPost } from './services/geminiService';
+import { generateBlogPost, fetchAndInjectImages } from './services/geminiService';
 import BlogPostDisplay from './components/BlogPostDisplay';
+import ImageKeywordEditor from './components/ImageKeywordEditor';
 
 type Theme = 'light' | 'dark';
 type DateRange = 'all' | 'day' | 'week' | 'month' | 'year';
 type Template = 'default' | 'review' | 'interview' | 'qa' | 'investment';
+type GenerationPhase = 'idle' | 'generating' | 'awaitingImageConfirmation' | 'fetchingImages' | 'complete';
 
 interface BlogResult {
   title: string;
@@ -12,14 +14,21 @@ interface BlogResult {
   tags: string[];
 }
 
+interface PendingBlogResult extends BlogResult {
+  imageKeywords: string[];
+}
+
 const App: React.FC = () => {
   const [keyword, setKeyword] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange>('all');
   const [template, setTemplate] = useState<Template>('default');
   const [blogResult, setBlogResult] = useState<BlogResult | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [pendingBlogResult, setPendingBlogResult] = useState<PendingBlogResult | null>(null);
+  const [generationPhase, setGenerationPhase] = useState<GenerationPhase>('idle');
   const [error, setError] = useState<string>('');
   const [theme, setTheme] = useState<Theme>('dark');
+  
+  const isLoading = generationPhase === 'generating' || generationPhase === 'fetchingImages';
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as Theme | null;
@@ -59,19 +68,26 @@ const App: React.FC = () => {
 
       (async () => {
         console.log('Starting auto-generation for:', keywordParam);
-        setIsLoading(true);
+        setGenerationPhase('generating');
         setError('');
         setBlogResult(null);
+        setPendingBlogResult(null);
         try {
           const result = await generateBlogPost(keywordParam, 'all', 'default');
           console.log('Auto-generation result:', result);
-          setBlogResult(result);
+          // Store pending result and show image keyword editor
+          setPendingBlogResult({
+            title: result.title,
+            post: result.post,
+            tags: result.tags,
+            imageKeywords: result.imageKeywords || []
+          });
+          setGenerationPhase('awaitingImageConfirmation');
         } catch (err) {
           console.error('Auto-generation error:', err);
           const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
           setError(`글 생성에 실패했습니다: ${errorMessage}`);
-        } finally {
-          setIsLoading(false);
+          setGenerationPhase('idle');
         }
       })();
     }
@@ -82,27 +98,88 @@ const App: React.FC = () => {
       setError('키워드를 입력해주세요.');
       return;
     }
-    setIsLoading(true);
+    setGenerationPhase('generating');
     setError('');
     setBlogResult(null);
+    setPendingBlogResult(null);
 
     try {
       const result = await generateBlogPost(keyword, dateRange, template);
-      setBlogResult(result);
+      // Store pending result and show image keyword editor
+      setPendingBlogResult({
+        title: result.title,
+        post: result.post,
+        tags: result.tags,
+        imageKeywords: result.imageKeywords || []
+      });
+      setGenerationPhase('awaitingImageConfirmation');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`글 생성에 실패했습니다: ${errorMessage}`);
       console.error(err);
-    } finally {
-      setIsLoading(false);
+      setGenerationPhase('idle');
     }
   }, [keyword, dateRange, template]);
 
-  const LoadingSpinner: React.FC = () => (
+  const handleImageConfirm = useCallback(async (imageKeywords: string[]) => {
+    if (!pendingBlogResult) return;
+    
+    setGenerationPhase('fetchingImages');
+    
+    try {
+      const { post: postWithImages } = await fetchAndInjectImages(
+        pendingBlogResult.post,
+        imageKeywords,
+        keyword
+      );
+      
+      setBlogResult({
+        title: pendingBlogResult.title,
+        post: postWithImages,
+        tags: pendingBlogResult.tags
+      });
+      setPendingBlogResult(null);
+      setGenerationPhase('complete');
+    } catch (err) {
+      console.error('Image fetch error:', err);
+      // Even if image fetch fails, show the post without images
+      setBlogResult({
+        title: pendingBlogResult.title,
+        post: pendingBlogResult.post,
+        tags: pendingBlogResult.tags
+      });
+      setPendingBlogResult(null);
+      setGenerationPhase('complete');
+    }
+  }, [pendingBlogResult, keyword]);
+
+  const handleImageSkip = useCallback(() => {
+    if (!pendingBlogResult) return;
+    
+    // Complete without images
+    setBlogResult({
+      title: pendingBlogResult.title,
+      post: pendingBlogResult.post,
+      tags: pendingBlogResult.tags
+    });
+    setPendingBlogResult(null);
+    setGenerationPhase('complete');
+  }, [pendingBlogResult]);
+
+  const LoadingSpinner: React.FC<{ phase: GenerationPhase }> = ({ phase }) => (
     <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400">
       <div className="w-12 h-12 border-4 border-t-transparent border-cyan-500 rounded-full animate-spin"></div>
-      <p className="mt-4 text-lg">블로그 글과 이미지를 생성하고 있습니다...</p>
-      <p className="text-sm">Gemini AI가 최신 뉴스를 검색하고 이미지를 찾는 데 시간이 걸릴 수 있습니다.</p>
+      {phase === 'generating' ? (
+        <>
+          <p className="mt-4 text-lg">블로그 글을 생성하고 있습니다...</p>
+          <p className="text-sm">Gemini AI가 최신 뉴스를 검색하고 분석하는 데 시간이 걸릴 수 있습니다.</p>
+        </>
+      ) : (
+        <>
+          <p className="mt-4 text-lg">이미지를 검색하고 있습니다...</p>
+          <p className="text-sm">Pexels에서 관련 이미지를 찾고 있습니다.</p>
+        </>
+      )}
     </div>
   );
 
@@ -185,13 +262,33 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex-grow bg-white/50 dark:bg-gray-800/50 rounded-lg shadow-2xl backdrop-blur-sm border border-gray-300 dark:border-gray-700 p-0 min-h-[500px] flex flex-col">
-          {isLoading ? (
-            <LoadingSpinner />
+          {generationPhase === 'generating' || generationPhase === 'fetchingImages' ? (
+            <LoadingSpinner phase={generationPhase} />
           ) : error ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg text-center">
                 <p className="font-bold mb-2">오류 발생</p>
                 <p>{error}</p>
+              </div>
+            </div>
+          ) : generationPhase === 'awaitingImageConfirmation' && pendingBlogResult ? (
+            <div className="flex flex-col h-full">
+              {/* Preview of generated content */}
+              <div className="flex-grow overflow-auto">
+                <BlogPostDisplay 
+                  title={pendingBlogResult.title} 
+                  post={pendingBlogResult.post} 
+                  tags={pendingBlogResult.tags} 
+                />
+              </div>
+              {/* Image keyword editor overlay */}
+              <div className="shrink-0 p-4 border-t border-gray-300 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+                <ImageKeywordEditor
+                  keywords={pendingBlogResult.imageKeywords}
+                  onConfirm={handleImageConfirm}
+                  onSkip={handleImageSkip}
+                  isLoading={false}
+                />
               </div>
             </div>
           ) : blogResult ? (
