@@ -157,25 +157,35 @@ function getPrompt(keyword: string, dateRangePrompt: string, template: string): 
       4.  **이미지 검색 키워드 생성**: 블로그 글의 내용과 어울리는 이미지를 찾기 위한 **영어 검색 키워드** 3개를 생성해주세요. 이 키워드는 Pexels 이미지 검색에 사용됩니다. 글의 주제, 분위기, 핵심 개념을 잘 나타내는 구체적인 영어 단어나 구문을 사용하세요. 예시: government support,financial aid,Korean economy 또는 AI chip,semiconductor factory,technology innovation
       5.  **(이미지 관련 지시사항 없음)**: **이미지는 절대 직접 생성하거나 삽입하지 마세요.** 오로지 텍스트와 태그만 생성하면 됩니다.
       6.  **제목 생성**: 완성된 글의 내용을 바탕으로, 사용자의 클릭을 유도할 수 있는 매력적이고(후킹), 검색 엔진 최적화(SEO)에 유리한 제목을 생성해주세요. 제목에는 반드시 핵심 키워드가 포함되어야 합니다.
-      7.  **참고 자료 추가**: 글의 마지막에 '참고 자료'라는 <h2> 제목을 포함하고, 그 아래에 당신이 참고한 뉴스 기사 5개의 제목과 링크를 <ul> 목록으로 반드시 포함해주세요. 각 목록 항목은 <li><a href="뉴스기사_URL" target="_blank" rel="noopener noreferrer">뉴스기사_제목</a></li> 형식이어야 합니다. 예를 들어, 다음과 같은 형식입니다: <li><a href="https://example.com/news-article-1" target="_blank" rel="noopener noreferrer">AI 반도체 시장의 최신 동향</a></li>
+      7.  **참고 자료 제목 제공**: 본문([POST])에는 참고 자료 섹션을 포함하지 마세요. 대신 [SOURCES] 섹션에 검색한 뉴스 기사들의 제목을 **검색한 순서 그대로** 한 줄에 하나씩 작성해주세요. 각 제목 끝에 반드시 " - 언론사명" 형식으로 언론사를 포함해주세요. 예시: "삼성전자 신고가 경신 - 연합뉴스"
       8.  **공통 규칙**:
           -   **언어**: 글은 반드시 한국어로 작성해야 합니다.
           -   **분량**: 글의 본문 길이는 3,000자에서 4,000자 사이여야 합니다.
           -   **본문 형식**: 글의 본문은 HTML 형식이어야 합니다. <html>, <head>, <body> 태그는 제외하고, 글의 본문에 해당하는 HTML 태그(예: <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <blockquote> 등)만 사용해주세요. 인라인 CSS는 꼭 필요한 경우(예: 이미지 스타일링)에만 최소한으로 사용하세요.
-      9.  **최종 결과물 형식**: 작업 완료 후, 글 제목, 본문, 태그, 이미지 키워드를 각각 [TITLE], [POST], [TAGS], [IMAGE_KEYWORDS] 섹션으로 구분하여 아래 형식에 맞춰 정확하게 반환해주세요. 다른 설명이나 추가 텍스트 없이 이 형식만 반환해야 합니다.
+      9.  **최종 결과물 형식**: 작업 완료 후, 글 제목, 본문, 태그, 이미지 키워드, 참고 뉴스 제목을 각각 [TITLE], [POST], [TAGS], [IMAGE_KEYWORDS], [SOURCES] 섹션으로 구분하여 아래 형식에 맞춰 정확하게 반환해주세요. 다른 설명이나 추가 텍스트 없이 이 형식만 반환해야 합니다.
 [TITLE]
-여기에 6번 단계에서 생성한 제목을 넣어주세요.
+여기에 제목을 넣어주세요.
 [/TITLE]
 [POST]
-여기에 5번 단계에서 완성한 HTML 본문을 넣어주세요.
+여기에 HTML 본문을 넣어주세요. (참고 자료 섹션은 제외)
 [/POST]
 [TAGS]
-여기에 3번 단계에서 생성한 태그 목록을 넣어주세요.
+태그1,태그2,태그3,...
 [/TAGS]
 [IMAGE_KEYWORDS]
-여기에 4번 단계에서 생성한 영어 이미지 검색 키워드를 쉼표로 구분하여 넣어주세요.
+영어키워드1,영어키워드2,영어키워드3
 [/IMAGE_KEYWORDS]
+[SOURCES]
+뉴스 기사 제목 - 언론사명
+뉴스 기사 제목 - 언론사명
+뉴스 기사 제목 - 언론사명
+뉴스 기사 제목 - 언론사명
+뉴스 기사 제목 - 언론사명
+[/SOURCES]
     `;
+
+
+
 
   switch (template) {
     case 'review':
@@ -295,6 +305,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     const postMatch = rawText.match(/\[POST\]([\s\S]*?)\[\/POST\]/);
     const tagsMatch = rawText.match(/\[TAGS\]([\s\S]*?)\[\/TAGS\]/);
     const imageKeywordsMatch = rawText.match(/\[IMAGE_KEYWORDS\]([\s\S]*?)\[\/IMAGE_KEYWORDS\]/);
+    const sourcesMatch = rawText.match(/\[SOURCES\]([\s\S]*?)\[\/SOURCES\]/);
 
     let title = titleMatch ? titleMatch[1].trim() : '';
     let post = postMatch ? postMatch[1].trim() : '';
@@ -302,6 +313,20 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     const tags = tagsString.split(',').map(tag => tag.trim()).filter(Boolean);
     const imageKeywordsString = imageKeywordsMatch ? imageKeywordsMatch[1].trim() : '';
     const imageKeywords = imageKeywordsString.split(',').map(kw => kw.trim()).filter(Boolean);
+
+    // Extract source titles from [SOURCES] section
+    const sourcesString = sourcesMatch ? sourcesMatch[1].trim() : '';
+    const sourceTitles = sourcesString.split('\n').map(s => s.trim().replace(/^[-•*\d.]+\s*/, '')).filter(Boolean);
+
+    // Extract grounding metadata from API response
+    const groundingMetadata = (response.candidates?.[0] as any)?.groundingMetadata;
+    const groundingChunks = groundingMetadata?.groundingChunks || [];
+
+    // Build URL list with domain info
+    const groundingUrls: { url: string; domain: string }[] = groundingChunks.map((chunk: any) => ({
+      url: chunk?.web?.uri || '',
+      domain: chunk?.web?.title || '' // Domain like "chosun.com"
+    })).filter((item: any) => item.url);
 
     // If the response doesn't follow the expected format, handle it gracefully.
     if (!titleMatch && !postMatch && !tagsMatch) {
@@ -314,6 +339,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
         post = rawText
           .replace(/\[TITLE\][\s\S]*?\[\/TITLE\]/, '')
           .replace(/\[TAGS\][\s\S]*?\[\/TAGS\]/, '')
+          .replace(/\[SOURCES\][\s\S]*?\[\/SOURCES\]/, '')
           .trim();
 
         // If it's still empty, show an error message.
@@ -334,6 +360,120 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
       }
     }
 
+    // Korean media outlet name-to-domain mapping for accurate URL matching
+    const mediaNameToDomain: Record<string, string[]> = {
+      '연합뉴스': ['yna.co.kr', 'yonhapnews.co.kr'],
+      '연합': ['yna.co.kr', 'yonhapnews.co.kr'],
+      '머니투데이': ['mt.co.kr'],
+      '매일경제': ['mk.co.kr'],
+      '매경': ['mk.co.kr'],
+      '조선일보': ['chosun.com'],
+      '조선': ['chosun.com'],
+      '조선비즈': ['biz.chosun.com'],
+      '동아일보': ['donga.com'],
+      '동아': ['donga.com'],
+      '한국경제': ['hankyung.com'],
+      '한경': ['hankyung.com'],
+      '한겨레': ['hani.co.kr'],
+      'SBS': ['sbs.co.kr'],
+      'KBS': ['kbs.co.kr'],
+      'MBC': ['mbc.co.kr'],
+      'YTN': ['ytn.co.kr'],
+      '뉴시스': ['newsis.com'],
+      '뉴스1': ['news1.kr'],
+      '전자신문': ['etnews.com'],
+      'ZDNet': ['zdnet.co.kr'],
+      '서울경제': ['sedaily.com'],
+      '이데일리': ['edaily.co.kr'],
+      '뉴데일리': ['newdaily.co.kr'],
+      '파이낸셜뉴스': ['fnnews.com'],
+      '파이낸셜': ['fnnews.com'],
+      '한국경제TV': ['wowtv.co.kr'],
+      '다음': ['daum.net', 'v.daum.net'],
+      'Daum': ['daum.net', 'v.daum.net'],
+      '네이버': ['naver.com', 'news.naver.com'],
+      'Naver': ['naver.com', 'news.naver.com'],
+      '비즈니스포스트': ['businesspost.co.kr'],
+      '연합인포맥스': ['infomax.co.kr', 'einfomax.co.kr'],
+      '아시아경제': ['asiae.co.kr'],
+      '노컷뉴스': ['nocutnews.co.kr'],
+      'CBS': ['nocutnews.co.kr'],
+      'JTBC': ['jtbc.co.kr'],
+      'TV조선': ['tvchosun.com'],
+      '문화일보': ['munhwa.com'],
+      '뉴스탑코리아': ['newstopkorea.com'],
+      '지디넷코리아': ['g-enews.com'],
+      '티스토리': ['tistory.com'],
+    };
+
+    // Function to extract media name from title (usually at the end after " - ")
+    const extractMediaName = (titleStr: string): string => {
+      const match = titleStr.match(/[-–—]\s*([^-–—]+)$/);
+      return match ? match[1].trim() : '';
+    };
+
+    // Function to find matching URL for a given source title
+    const findMatchingUrl = (sourceTitle: string, urlList: { url: string; domain: string }[], usedIndices: Set<number>): { url: string; index: number } | null => {
+      const mediaName = extractMediaName(sourceTitle);
+      if (!mediaName) return null;
+
+      // Get expected domains for this media name
+      const expectedDomains = mediaNameToDomain[mediaName] || [];
+
+      // Try to find a matching URL by domain
+      for (let i = 0; i < urlList.length; i++) {
+        if (usedIndices.has(i)) continue;
+
+        const { domain } = urlList[i];
+        // Check if the domain matches any expected domain for this media
+        const isMatch = expectedDomains.some(expected =>
+          domain.includes(expected) || expected.includes(domain)
+        );
+
+        if (isMatch) {
+          return { url: urlList[i].url, index: i };
+        }
+      }
+
+      return null;
+    };
+
+    // Generate references section using AI-provided titles with domain-based URL matching
+    if (sourceTitles.length > 0 && groundingUrls.length > 0) {
+      let referencesHtml = '<div class="references-section" style="margin-top: 3em; padding-top: 2em; border-top: 1px solid #e5e7eb;">';
+      referencesHtml += '<h2 style="font-size: 1.25em; font-weight: bold; color: #374151; margin-bottom: 1em;">📚 참고 자료</h2>';
+      referencesHtml += '<ul style="list-style: none; padding: 0; margin: 0;">';
+
+      const usedUrlIndices = new Set<number>();
+
+      for (let i = 0; i < Math.min(sourceTitles.length, 5); i++) {
+        const sourceTitle = sourceTitles[i];
+
+        // Try domain-based matching first
+        const matchResult = findMatchingUrl(sourceTitle, groundingUrls, usedUrlIndices);
+
+        let finalUrl = '';
+        if (matchResult) {
+          finalUrl = matchResult.url;
+          usedUrlIndices.add(matchResult.index);
+        } else if (groundingUrls[i] && !usedUrlIndices.has(i)) {
+          // Fallback: use URL at same index
+          finalUrl = groundingUrls[i].url;
+          usedUrlIndices.add(i);
+        }
+
+        if (finalUrl) {
+          referencesHtml += `<li style="margin-bottom: 0.8em;"><a href="${finalUrl}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: none;">${sourceTitle}</a></li>`;
+        } else {
+          referencesHtml += `<li style="margin-bottom: 0.8em; color: #6b7280;">${sourceTitle}</li>`;
+        }
+      }
+
+      referencesHtml += '</ul></div>';
+      post += referencesHtml;
+    }
+
+
     // Return blog post without images - images will be added separately via fetchAndInjectImages
     return { title, post, tags: tags.slice(0, 10), imageKeywords };
 
@@ -345,6 +485,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     throw new Error("알 수 없는 오류가 발생했습니다.");
   }
 }
+
 
 /**
  * Fetches images from Pexels using the provided keywords and injects them into the post
