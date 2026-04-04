@@ -39,6 +39,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   // Settings Form
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  // Edit Topic State
+  const [editTopicId, setEditTopicId] = useState<string | null>(null);
+  const [editTopicTitle, setEditTopicTitle] = useState('');
+  const [editTopicTemplate, setEditTopicTemplate] = useState('review');
+
   const fetchTopics = async () => {
     const res = await fetch('/api/admin/topics', {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -101,6 +106,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     fetchTopics();
+  };
+
+  const handleEditStart = (topic: Topic) => {
+    setEditTopicId(topic.id);
+    setEditTopicTitle(topic.title);
+    setEditTopicTemplate(topic.template);
+  };
+
+  const handleSaveEdit = async (id: string) => {
+    try {
+      await fetch('/api/admin/topics', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ id, title: editTopicTitle, template: editTopicTemplate })
+      });
+      setEditTopicId(null);
+      fetchTopics();
+    } catch (err) {
+      alert("수정 저장에 실패했습니다.");
+    }
   };
 
   const handleTriggerPublish = async (id: string, title: string, template: string) => {
@@ -263,37 +291,82 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
             <div className="space-y-4">
               {[...topics].reverse().map(topic => (
                 <div key={topic.id} className="group flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:border-cyan-500 transition-colors">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[topic.status]}`}>
-                        {STATUS_LABELS[topic.status]}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {new Date(topic.createdAt).toLocaleString('ko-KR')}
-                      </span>
-                    </div>
-                    <h3 className="font-medium text-lg truncate" title={topic.title}>{topic.title}</h3>
-                    <p className="text-sm text-slate-500">템플릿: {topic.template}</p>
-                  </div>
                   
-                  <div className="flex items-center gap-2 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                    {topic.status !== 'publishing' && (
-                      <>
-                        <button 
-                          onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
-                          className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
+                  {editTopicId === topic.id ? (
+                    <div className="flex-1 w-full space-y-3">
+                      <input 
+                        type="text" 
+                        value={editTopicTitle} 
+                        onChange={(e) => setEditTopicTitle(e.target.value)} 
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <select 
+                          value={editTopicTemplate} 
+                          onChange={(e) => setEditTopicTemplate(e.target.value)}
+                          className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none"
                         >
-                          ▶ 발행
+                          <option value="default">기본 뉴스 분석</option>
+                          <option value="review">제품/서비스 리뷰</option>
+                          <option value="interview">전문가 인터뷰</option>
+                          <option value="qa">Q&A 형식</option>
+                          <option value="investment">투자 전략 분석</option>
+                        </select>
+                        <button 
+                          onClick={() => handleSaveEdit(topic.id)}
+                          className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition"
+                        >
+                          저장
                         </button>
                         <button 
-                          onClick={() => handleDeleteTopic(topic.id)}
-                          className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                          onClick={() => setEditTopicId(null)}
+                          className="px-4 py-2 text-slate-500 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition"
                         >
-                          삭제
+                          취소
                         </button>
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[topic.status]}`}>
+                            {STATUS_LABELS[topic.status]}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {new Date(topic.createdAt).toLocaleString('ko-KR')}
+                          </span>
+                        </div>
+                        <h3 className="font-medium text-lg truncate" title={topic.title}>{topic.title}</h3>
+                        <p className="text-sm text-slate-500">템플릿: {topic.template}</p>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        {topic.status !== 'publishing' && (
+                          <>
+                            <button 
+                              onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
+                              className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
+                            >
+                              ▶ 발행
+                            </button>
+                            <button 
+                              onClick={() => handleEditStart(topic)}
+                              className="px-3 py-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-800/50 transition"
+                            >
+                              수정
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteTopic(topic.id)}
+                              className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                            >
+                              삭제
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
