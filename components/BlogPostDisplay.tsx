@@ -16,11 +16,10 @@ interface StyleButtonProps {
 const StyleButton: React.FC<StyleButtonProps> = ({ onClick, isActive, children }) => (
   <button
     onClick={onClick}
-    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-      isActive
+    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${isActive
         ? 'bg-cyan-500 text-white'
         : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
-    }`}
+      }`}
   >
     {children}
   </button>
@@ -33,7 +32,7 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
     full: '전체 파일로 복사',
     tags: '태그 복사'
   });
-  
+
   const [fontSize, setFontSize] = useState<'base' | 'sm' | 'lg'>('base');
   const [lineHeight, setLineHeight] = useState<'relaxed' | 'normal' | 'loose'>('relaxed');
 
@@ -42,7 +41,11 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
 
 
   const handleCopyBodyOnly = () => {
-    const contentToCopy = `<h1>${title}</h1>\n${post}`;
+    // Strip base64 images (data:image URLs) for blog compatibility
+    // Base64 images are too large for most blog platforms
+    const cleanedPost = post.replace(/<figure[^>]*>[\s\S]*?<img[^>]*src="data:image[^"]*"[^>]*>[\s\S]*?<\/figure>/gi, '')
+      .replace(/<img[^>]*src="data:image[^"]*"[^>]*>/gi, '');
+    const contentToCopy = `<h1>${title}</h1>\n${cleanedPost}`;
     navigator.clipboard.writeText(contentToCopy).then(() => {
       setCopyStatus(prev => ({ ...prev, body: '복사 완료!' }));
       setTimeout(() => {
@@ -51,12 +54,12 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
     }).catch(err => {
       console.error('Failed to copy body: ', err);
       setCopyStatus(prev => ({ ...prev, body: '복사 실패' }));
-       setTimeout(() => {
+      setTimeout(() => {
         setCopyStatus(prev => ({ ...prev, body: '블로그용 복사' }));
       }, 2000);
     });
   };
-  
+
   const handleCopyFullFile = () => {
     const fullHtml = `
       <!DOCTYPE html>
@@ -159,18 +162,18 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
     navigator.clipboard.writeText(fullHtml).then(() => {
       setCopyStatus(prev => ({ ...prev, full: '복사 완료!' }));
       setTimeout(() => {
-          setCopyStatus(prev => ({ ...prev, full: '전체 파일로 복사' }));
+        setCopyStatus(prev => ({ ...prev, full: '전체 파일로 복사' }));
       }, 2000);
     }).catch(err => {
       console.error('Failed to copy full file: ', err);
       setCopyStatus(prev => ({ ...prev, full: '복사 실패' }));
       setTimeout(() => {
         setCopyStatus(prev => ({ ...prev, full: '전체 파일로 복사' }));
-    }, 2000);
+      }, 2000);
     });
   };
-  
-    const handleCopyTags = () => {
+
+  const handleCopyTags = () => {
     if (tags.length === 0) return;
     navigator.clipboard.writeText(tags.join(', ')).then(() => {
       setCopyStatus(prev => ({ ...prev, tags: '복사 완료!' }));
@@ -187,7 +190,7 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
   };
 
   const baseContentClasses = "max-w-none text-gray-700 dark:text-gray-300 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-cyan-700 dark:[&_h2]:text-cyan-400 [&_h2]:border-b [&_h2]:border-gray-300 dark:[&_h2]:border-gray-600 [&_h2]:pb-2 [&_h2]:mb-6 [&_h2]:mt-8 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-cyan-600 dark:[&_h3]:text-cyan-300 [&_h3]:mt-6 [&_h3]:mb-4 [&_strong]:text-gray-900 dark:[&_strong]:text-cyan-200 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-2 [&_p]:mb-4 [&_a]:text-blue-600 dark:[&_a]:text-blue-400 hover:[&_a]:text-blue-500 dark:hover:[&_a]:text-blue-300 hover:[&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-cyan-500 dark:[&_blockquote]:border-cyan-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:my-4 [&_blockquote]:text-gray-600 dark:[&_blockquote]:text-gray-400";
-  
+
   const contentClassName = `${baseContentClasses} ${fontSizeClassMap[fontSize]} ${lineHeightClassMap[lineHeight]}`;
 
   return (
@@ -254,26 +257,26 @@ const BlogPostDisplay: React.FC<BlogPostDisplayProps> = ({ title, post, tags, on
         </h1>
         {tags && tags.length > 0 && (
           <div className="mb-8 p-4 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200">추천 태그</h4>
-                <button
-                    onClick={handleCopyTags}
-                    className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold py-1 px-3 rounded-lg transition-colors text-xs flex items-center justify-center gap-2"
-                    aria-label="태그 복사"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    {copyStatus.tags}
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                  {tags.map((tag, index) => (
-                      <span key={index} className="bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-200 px-3 py-1 rounded-full text-sm font-medium">
-                          #{tag}
-                      </span>
-                  ))}
-              </div>
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200">추천 태그</h4>
+              <button
+                onClick={handleCopyTags}
+                className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold py-1 px-3 rounded-lg transition-colors text-xs flex items-center justify-center gap-2"
+                aria-label="태그 복사"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+                {copyStatus.tags}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag, index) => (
+                <span key={index} className="bg-cyan-100 dark:bg-cyan-900/50 text-cyan-800 dark:text-cyan-200 px-3 py-1 rounded-full text-sm font-medium">
+                  #{tag}
+                </span>
+              ))}
+            </div>
           </div>
         )}
         <div

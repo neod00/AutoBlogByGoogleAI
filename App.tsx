@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [generationPhase, setGenerationPhase] = useState<GenerationPhase>('idle');
   const [error, setError] = useState<string>('');
   const [theme, setTheme] = useState<Theme>('dark');
-  
+
   const isLoading = generationPhase === 'generating' || generationPhase === 'fetchingImages';
 
   useEffect(() => {
@@ -125,16 +125,17 @@ const App: React.FC = () => {
 
   const handleImageConfirm = useCallback(async (imageKeywords: string[]) => {
     if (!pendingBlogResult) return;
-    
+
     setGenerationPhase('fetchingImages');
-    
+
     try {
       const { post: postWithImages } = await fetchAndInjectImages(
         pendingBlogResult.post,
         imageKeywords,
-        keyword
+        keyword,
+        template
       );
-      
+
       setBlogResult({
         title: pendingBlogResult.title,
         post: postWithImages,
@@ -161,7 +162,7 @@ const App: React.FC = () => {
 
   const handleImageSkip = useCallback(() => {
     if (!pendingBlogResult) return;
-    
+
     // Complete without images
     setBlogResult({
       title: pendingBlogResult.title,
@@ -176,11 +177,11 @@ const App: React.FC = () => {
 
   const handleRegenerateImages = useCallback(() => {
     if (!blogResult) return;
-    
+
     // 이미지 재생성을 위해 pendingBlogResult로 되돌림
     // <figure> 태그와 그 내용을 모두 제거
     const originalPost = blogResult.originalPost || blogResult.post.replace(/<figure[\s\S]*?<\/figure>/gi, '').replace(/\s*\n\s*\n\s*/g, '\n').trim();
-    
+
     setPendingBlogResult({
       title: blogResult.title,
       post: originalPost,
@@ -300,10 +301,10 @@ const App: React.FC = () => {
             <div className="flex flex-col h-full">
               {/* Preview of generated content */}
               <div className="flex-grow overflow-auto">
-                <BlogPostDisplay 
-                  title={pendingBlogResult.title} 
-                  post={pendingBlogResult.post} 
-                  tags={pendingBlogResult.tags} 
+                <BlogPostDisplay
+                  title={pendingBlogResult.title}
+                  post={pendingBlogResult.post}
+                  tags={pendingBlogResult.tags}
                 />
               </div>
               {/* Image keyword editor overlay */}
@@ -317,9 +318,9 @@ const App: React.FC = () => {
               </div>
             </div>
           ) : blogResult ? (
-            <BlogPostDisplay 
-              title={blogResult.title} 
-              post={blogResult.post} 
+            <BlogPostDisplay
+              title={blogResult.title}
+              post={blogResult.post}
               tags={blogResult.tags}
               onRegenerateImages={blogResult.imageKeywords && blogResult.imageKeywords.length > 0 ? handleRegenerateImages : undefined}
             />

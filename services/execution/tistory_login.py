@@ -117,10 +117,13 @@ class TistoryAutoLogin:
             
             # headless 모드 (수동 로그인 시에는 force_visible=True)
             if self.headless and not force_visible:
-                options.add_argument("--headless")
+                options.add_argument("--headless=new")  # 새 headless 모드 (더 안정적)
             
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--remote-debugging-port=9222")
             
             # ★ 자동화 감지 우회 (3가지 핵심)
             options.add_argument("--disable-blink-features=AutomationControlled")

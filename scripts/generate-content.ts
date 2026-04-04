@@ -23,9 +23,15 @@ if (!API_KEY) {
 const genAI = new GoogleGenAI({ apiKey: API_KEY });
 
 // ── Load directives ─────────────────────────────────────────
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename_local = fileURLToPath(import.meta.url);
+const __dirname_local = dirname(__filename_local);
+
 function loadDirective(name: string): string {
   try {
-    return readFileSync(resolve(__dirname, `../directives/${name}`), "utf-8");
+    return readFileSync(resolve(__dirname_local, `../directives/${name}`), "utf-8");
   } catch {
     return "";
   }

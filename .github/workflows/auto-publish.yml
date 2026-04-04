@@ -9,6 +9,11 @@ concurrency:
   group: auto-publish
   cancel-in-progress: false
 
+env:
+  LANG: ko_KR.UTF-8
+  LC_ALL: C.UTF-8
+  PYTHONIOENCODING: utf-8
+
 jobs:
   generate-and-publish:
     runs-on: ubuntu-latest
@@ -52,12 +57,13 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
+          PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'review' }}
         run: |
-          TOPIC="${{ github.event.client_payload.topic }}"
-          TEMPLATE="${{ github.event.client_payload.template || 'review' }}"
-          echo "Generating blog post for: $TOPIC"
-          npx tsx scripts/generate-content.ts "$TOPIC" "$TEMPLATE" > /tmp/blog_output.json
+          echo "Generating blog post for: $PUBLISH_TOPIC"
+          npx tsx scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
           echo "content_file=/tmp/blog_output.json" >> $GITHUB_OUTPUT
+          cat /tmp/blog_output.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Title: {d.get(\"title\",\"?\")[:60]}')"
 
       # 7. Publish to Tistory
       - name: Publish to Tistory
@@ -79,12 +85,3 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           npx tsx scripts/send-result-email.ts
-
-      # 9. Save updated cookies (if login refreshed)
-      - name: Update cookies secret
-        if: success()
-        run: |
-          if [ -f ~/.tistory_login/cookies/default_cookies.pkl ]; then
-            NEW_COOKIES=$(base64 -w 0 ~/.tistory_login/cookies/default_cookies.pkl)
-            echo "Cookies updated (would need GitHub CLI to update secret)"
-          fi
