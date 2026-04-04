@@ -109,11 +109,18 @@ class TistoryAutoLogin:
     def _init_driver(self, force_visible: bool = False) -> bool:
         """Chrome 드라이버 초기화 (자동화 감지 우회 포함)"""
         try:
+            import os
             from selenium import webdriver
             from selenium.webdriver.chrome.service import Service
             from selenium.webdriver.chrome.options import Options
             
             options = Options()
+            
+            # CI 환경에서 Chrome binary 경로 설정
+            chrome_bin = os.environ.get("CHROME_BIN")
+            if chrome_bin:
+                options.binary_location = chrome_bin
+                self._log(f"🔧 Chrome binary: {chrome_bin}")
             
             # headless 모드 (수동 로그인 시에는 force_visible=True)
             if self.headless and not force_visible:

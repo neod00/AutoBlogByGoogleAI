@@ -42,8 +42,10 @@ jobs:
 
       # 4. Install Chrome for Selenium
       - uses: browser-actions/setup-chrome@v1
+        id: setup-chrome
         with:
           chrome-version: stable
+          install-chromedriver: true
 
       # 5. Restore Tistory cookies
       - name: Restore cookies
@@ -71,6 +73,7 @@ jobs:
         env:
           TISTORY_BLOG_URL: https://climate-insight.tistory.com
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
           python scripts/publish-to-tistory.py \
             --content-file /tmp/blog_output.json \
