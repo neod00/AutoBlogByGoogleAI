@@ -462,23 +462,90 @@ class TistoryPublisher:
             return {"success": False, "url": "", "error": "제목 입력 실패"}
 
         # 4. HTML 모드 전환 + 본문 입력
-        # 먼저 TinyMCE API로 직접 시도 (가장 안정적)
-        content_set = self.driver.execute_script("""
-            if (typeof tinymce !== 'undefined' && tinymce.activeEditor) {
-                tinymce.activeEditor.setContent(arguments[0]);
-                return true;
-            }
-            return false;
-        """, html_content)
-
-        if content_set:
-            self._log("✅ HTML 본문 입력 (TinyMCE API 직접)")
-        else:
-            # HTML 모드로 전환 후 입력
-            self._switch_to_html_mode()
+        # TinyMCE 에디터가 완전히 초기화될 때까지 대기
+        self._log("⏳ TinyMCE 에디터 초기화 대기...")
+        for attempt in range(15):  # 최대 15초 대기
+            editor_ready = self.driver.execute_script("""
+                if (typeof tinymce === 'undefined') return 'no_tinymce';
+                if (!tinymce.activeEditor) return 'no_editor';
+                if (!tinymce.activeEditor.getBody()) return 'no_body';
+                if (!tinymce.activeEditor.initialized) return 'not_init';
+                return 'ready';
+            """)
+            if editor_ready == 'ready':
+                self._log(f"✅ TinyMCE 준비 완료 (attempt {attempt + 1})")
+                break
             time.sleep(1)
+        else:
+            self._log(f"⚠️ TinyMCE 초기화 대기 타임아웃 (마지막 상태: {editor_ready})")
+
+        # 방법 1: TinyMCE API로 직접 시도
+        content_verified = False
+        try:
+            self.driver.execute_script("""
+                tinymce.activeEditor.setContent(arguments[0]);
+            """, html_content)
+            time.sleep(2)  # setContent 반영 대기
+
+            # 실제로 콘텐츠가 들어갔는지 검증
+            actual_length = self.driver.execute_script("""
+                var content = tinymce.activeEditor.getContent();
+                return content ? content.length : 0;
+            """)
+            if actual_length and actual_length > 100:
+                self._log(f"✅ HTML 본문 입력 확인 (TinyMCE API, {actual_length}자)")
+                content_verified = True
+            else:
+                self._log(f"⚠️ TinyMCE setContent 후 검증 실패 (길이: {actual_length})")
+        except Exception as e:
+            self._log(f"⚠️ TinyMCE API 시도 실패: {e}")
+
+        # 방법 2: 검증 실패 시 HTML 모드로 전환 후 직접 입력
+        if not content_verified:
+            self._log("🔄 HTML 모드로 전환하여 재시도...")
+            self._switch_to_html_mode()
+            time.sleep(2)
             if not self._input_html_content(html_content):
-                return {"success": False, "url": "", "error": "본문 입력 실패"}
+                # 방법 3: 최후의 수단 — iframe body에 직접 주입
+                self._log("🔄 iframe body 직접 주입 시도...")
+                try:
+                    injected = self.driver.execute_script("""
+                        // 기본모드로 되돌리기
+                        if (typeof tinymce !== 'undefined' && tinymce.activeEditor) {
+                            var body = tinymce.activeEditor.getBody();
+                            if (body) {
+                                body.innerHTML = arguments[0];
+                                tinymce.activeEditor.fire('change');
+                                return body.innerHTML.length;
+                            }
+                        }
+                        // iframe 접근 시도
+                        var iframes = document.querySelectorAll('iframe');
+                        for (var i = 0; i < iframes.length; i++) {
+                            try {
+                                var doc = iframes[i].contentDocument || iframes[i].contentWindow.document;
+                                var body = doc.querySelector('body');
+                                if (body && body.isContentEditable) {
+                                    body.innerHTML = arguments[0];
+                                    return body.innerHTML.length;
+                                }
+                            } catch(e) {}
+                        }
+                        return 0;
+                    """, html_content)
+                    if injected and injected > 100:
+                        self._log(f"✅ HTML 본문 입력 확인 (iframe 직접 주입, {injected}자)")
+                        content_verified = True
+                    else:
+                        self._log(f"❌ iframe 주입도 실패 (길이: {injected})")
+                except Exception as e:
+                    self._log(f"❌ iframe 주입 실패: {e}")
+
+            else:
+                content_verified = True
+
+        if not content_verified:
+            return {"success": False, "url": "", "error": "본문 입력 실패 (모든 방법 실패)"}
 
         # 5. 태그 입력
         if tags:
