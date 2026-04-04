@@ -104,28 +104,41 @@ class TistoryPublisher:
             pass  # alert 없으면 무시
 
     def _navigate_to_editor(self) -> bool:
-        """글쓰기 페이지로 이동"""
+        """글쓰기 페이지로 이동 (재시도 포함)"""
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
         editor_url = f"{self.blog_url}/manage/newpost"
-        self.driver.get(editor_url)
-        time.sleep(2)
 
-        # 임시 저장 글 alert 처리 ("이어서 작성하시겠습니까?")
-        self._handle_alert(accept=False)
+        for attempt in range(2):  # 최대 2회 시도
+            if attempt > 0:
+                self._log(f"🔄 글쓰기 페이지 재시도 ({attempt + 1}/2)...")
 
-        # 글쓰기 페이지 로딩 확인
-        try:
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
+            self.driver.get(editor_url)
+            time.sleep(3)
 
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "post-title-inp"))
-            )
-            self._log("✅ 글쓰기 페이지 로딩 완료")
-            return True
-        except Exception as e:
-            self._log(f"❌ 글쓰기 페이지 로딩 실패: {e}")
-            return False
+            # 임시 저장 글 alert 처리 (여러 번 체크 — 늦게 뜰 수 있음)
+            for _ in range(3):
+                self._handle_alert(accept=False)
+                time.sleep(0.5)
+
+            # 글쓰기 페이지 로딩 확인 (30초 대기)
+            try:
+                WebDriverWait(self.driver, 30).until(
+                    EC.presence_of_element_located((By.ID, "post-title-inp"))
+                )
+                self._log("✅ 글쓰기 페이지 로딩 완료")
+                return True
+            except Exception as e:
+                self._log(f"⚠️ 글쓰기 페이지 로딩 대기 실패 (시도 {attempt + 1}): {e}")
+                # 혹시 alert가 뒤늦게 떴을 수 있으므로 다시 처리
+                self._handle_alert(accept=False)
+                time.sleep(1)
+
+        self._log("❌ 글쓰기 페이지 로딩 최종 실패")
+        return False
+
 
     def _input_title(self, title: str) -> bool:
         """제목 입력"""
