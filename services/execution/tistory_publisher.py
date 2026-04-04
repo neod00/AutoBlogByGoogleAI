@@ -388,6 +388,19 @@ class TistoryPublisher:
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
+            # 0단계: 발행 전 TinyMCE 콘텐츠를 내부 textarea에 확실히 동기화
+            try:
+                pre_publish_len = self.driver.execute_script("""
+                    var editor = tinymce.activeEditor;
+                    editor.save();
+                    editor.fire('change');
+                    var content = editor.getContent();
+                    return content ? content.length : 0;
+                """)
+                self._log(f"   📝 발행 전 콘텐츠 동기화 완료 ({pre_publish_len}자)")
+            except Exception as e:
+                self._log(f"   ⚠️ 발행 전 동기화 시도 실패: {e}")
+
             # 1단계: [완료] 버튼 클릭 → 발행 설정 레이어 열기
             pub_layer_btn = self.driver.find_element(By.ID, "publish-layer-btn")
             pub_layer_btn.click()
@@ -523,7 +536,18 @@ class TistoryPublisher:
         content_verified = False
         try:
             self.driver.execute_script("""
-                tinymce.activeEditor.setContent(arguments[0]);
+                var editor = tinymce.activeEditor;
+                editor.setContent(arguments[0]);
+                // 핵심: dirty flag와 change 이벤트를 명시적으로 트리거
+                editor.isNotDirty = false;
+                editor.fire('change');
+                editor.fire('input');
+                // TinyMCE 내부 undo manager에도 반영
+                if (editor.undoManager) {
+                    editor.undoManager.add();
+                }
+                // save()를 호출하여 숨겨진 textarea에 콘텐츠 동기화
+                editor.save();
             """, html_content)
             time.sleep(2)  # setContent 반영 대기
 
