@@ -129,6 +129,8 @@ class TistoryAutoLogin:
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-software-rasterizer")
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--remote-debugging-port=9222")
             
@@ -146,12 +148,14 @@ class TistoryAutoLogin:
             
             # Selenium 4.6+ 내장 드라이버 관리 우선 시도
             try:
-                self.driver = webdriver.Chrome(options=options)
+                service = Service(log_output="/tmp/chromedriver.log")
+                self.driver = webdriver.Chrome(service=service, options=options)
                 self._log("✅ Chrome 드라이버 초기화 완료 (내장)")
-            except Exception:
+            except Exception as e:
+                self._log(f"⚠️ 내장 드라이버 초기화 실패: {e}")
                 # Fallback: webdriver-manager 사용
                 from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
+                service = Service(ChromeDriverManager().install(), log_output="/tmp/chromedriver.log")
                 self.driver = webdriver.Chrome(service=service, options=options)
                 self._log("✅ Chrome 드라이버 초기화 완료 (webdriver-manager)")
             

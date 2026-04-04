@@ -40,12 +40,11 @@ jobs:
         run: |
           pip install selenium webdriver-manager python-dotenv
 
-      # 4. Install Chrome for Selenium
-      - uses: browser-actions/setup-chrome@v1
-        id: setup-chrome
-        with:
-          chrome-version: stable
-          install-dependencies: true
+      # 4. Install Chrome Dependencies and Xvfb
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libxss1 libasound2t64 libatk-bridge2.0-0t64 libgtk-3-0 libgbm1 libdrm2 xvfb
 
       # 5. Restore Tistory cookies
       - name: Restore cookies
@@ -73,12 +72,16 @@ jobs:
         env:
           TISTORY_BLOG_URL: https://climate-insight.tistory.com
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
-          python scripts/publish-to-tistory.py \
+          xvfb-run --auto-servernum python scripts/publish-to-tistory.py \
             --content-file /tmp/blog_output.json \
             --blog-url "$TISTORY_BLOG_URL" \
             --categories "카테고리 없음,ai 신기술 및 이슈,기후변화 이슈,정책과 제도,기후금융,국제협력,과학과 기술,탄소중립,기타"
+
+      # 7.1 Debug Chromedriver on failure
+      - name: Show Chromedriver Logs
+        if: failure()
+        run: cat /tmp/chromedriver.log || echo "No chromedriver log found"
 
       # 8. Send result email
       - name: Send notification email
