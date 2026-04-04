@@ -97,26 +97,42 @@ export default async function handler(req: any, res: any) {
         // Ensure no trailing slash
         baseUrl = baseUrl.replace(/\/$/, '');
 
+        const cronSecret = process.env.CRON_SECRET || '';
+
         const listItems = titles.map((title, index) => {
-            const link = `${baseUrl}/?keyword=${encodeURIComponent(title)}&auto=true`;
+            const previewLink = `${baseUrl}/?keyword=${encodeURIComponent(title)}&auto=true`;
+            const publishLink = `${baseUrl}/api/trigger-publish?topic=${encodeURIComponent(title)}&secret=${cronSecret}`;
             return `
-            <li style="margin-bottom: 10px;">
-                <a href="${link}" style="font-size: 16px; color: #0070f3; text-decoration: none;">
+            <li style="margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 8px;">
                     ${index + 1}. ${title}
-                </a>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="${previewLink}" style="display: inline-block; padding: 6px 14px; background: #f1f5f9; color: #475569; border-radius: 6px; text-decoration: none; font-size: 13px;">
+                        👁️ 미리보기
+                    </a>
+                    <a href="${publishLink}" style="display: inline-block; padding: 6px 14px; background: #10b981; color: white; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600;">
+                        ▶ 자동 발행
+                    </a>
+                </div>
             </li>
         `;
         }).join('');
 
         const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #333;">Daily Blog Ideas: ${DAILY_TOPIC}</h1>
-        <p>Here are 5 trending topics for today. Click one to generate a blog post:</p>
-        <ul style="list-style-type: none; padding: 0;">
-          ${listItems}
-        </ul>
-        <p style="color: #888; font-size: 12px; margin-top: 20px;">
-          Sent by AutoBlogByGoogleAI
+      <div style="font-family: 'Apple SD Gothic Neo', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #0f172a, #1e293b); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">📰 오늘의 블로그 주제</h1>
+          <p style="margin: 8px 0 0; color: #94a3b8;">${DAILY_TOPIC} · ${new Date().toLocaleDateString('ko-KR')}</p>
+        </div>
+        <div style="padding: 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+          <p style="color: #64748b; margin-bottom: 16px;">트렌딩 주제 5개입니다. <strong>자동 발행</strong>을 클릭하면 바로 티스토리에 발행됩니다.</p>
+          <ul style="list-style-type: none; padding: 0; margin: 0;">
+            ${listItems}
+          </ul>
+        </div>
+        <p style="color: #94a3b8; font-size: 11px; margin-top: 16px; text-align: center;">
+          AutoBlogByGoogleAI · Automated Publishing Pipeline
         </p>
       </div>
     `;

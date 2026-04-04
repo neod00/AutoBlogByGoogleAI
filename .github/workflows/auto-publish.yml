@@ -1,0 +1,90 @@
+name: Auto Blog Publish
+
+on:
+  repository_dispatch:
+    types: [publish_post]
+
+# Prevent concurrent runs
+concurrency:
+  group: auto-publish
+  cancel-in-progress: false
+
+jobs:
+  generate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Checkout code
+      - uses: actions/checkout@v4
+
+      # 2. Setup Node.js (for blog generation)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # 3. Setup Python (for Tistory publishing)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install selenium webdriver-manager python-dotenv
+
+      # 4. Install Chrome for Selenium
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      # 5. Restore Tistory cookies
+      - name: Restore cookies
+        run: |
+          mkdir -p ~/.tistory_login/cookies
+          echo "${{ secrets.TISTORY_COOKIES_B64 }}" | base64 -d > ~/.tistory_login/cookies/default_cookies.pkl
+
+      # 6. Generate blog post
+      - name: Generate blog content
+        id: generate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: |
+          TOPIC="${{ github.event.client_payload.topic }}"
+          TEMPLATE="${{ github.event.client_payload.template || 'review' }}"
+          echo "Generating blog post for: $TOPIC"
+          npx tsx scripts/generate-content.ts "$TOPIC" "$TEMPLATE" > /tmp/blog_output.json
+          echo "content_file=/tmp/blog_output.json" >> $GITHUB_OUTPUT
+
+      # 7. Publish to Tistory
+      - name: Publish to Tistory
+        id: publish
+        env:
+          TISTORY_BLOG_URL: https://climate-insight.tistory.com
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/publish-to-tistory.py \
+            --content-file /tmp/blog_output.json \
+            --blog-url "$TISTORY_BLOG_URL" \
+            --categories "카테고리 없음,ai 신기술 및 이슈,기후변화 이슈,정책과 제도,기후금융,국제협력,과학과 기술,탄소중립,기타"
+
+      # 8. Send result email
+      - name: Send notification email
+        if: always()
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          npx tsx scripts/send-result-email.ts
+
+      # 9. Save updated cookies (if login refreshed)
+      - name: Update cookies secret
+        if: success()
+        run: |
+          if [ -f ~/.tistory_login/cookies/default_cookies.pkl ]; then
+            NEW_COOKIES=$(base64 -w 0 ~/.tistory_login/cookies/default_cookies.pkl)
+            echo "Cookies updated (would need GitHub CLI to update secret)"
+          fi
