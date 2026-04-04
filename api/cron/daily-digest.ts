@@ -27,7 +27,7 @@ async function sendEmail(to: string, subject: string, html: string) {
     }
 }
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY;
 const GMAIL_USER = process.env.GMAIL_USER;
 const DAILY_TOPIC = process.env.DAILY_TOPIC || 'AI Trends';
 const CRON_SECRET = process.env.CRON_SECRET;
