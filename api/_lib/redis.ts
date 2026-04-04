@@ -1,8 +1,8 @@
 import { Redis } from '@upstash/redis';
 
-// Use UPSTASH_REDIS_REST_URL if available (new Vercel marketplace integration), or fallback to KV_REST_API_URL (old Vercel KV)
-const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+// Use UPSTASH_REDIS_REST_URL if available, STORAGE_REST_URL if Custom prefix is used, or fallback to KV_REST_API_URL
+const url = process.env.UPSTASH_REDIS_REST_URL || process.env.STORAGE_REST_URL || process.env.KV_REST_API_URL || process.env.KV_URL;
+const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.STORAGE_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
 export const redis = new Redis({
   url: url || "",
