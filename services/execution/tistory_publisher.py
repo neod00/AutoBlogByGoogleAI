@@ -118,8 +118,22 @@ class TistoryPublisher:
             self.driver.get(editor_url)
             time.sleep(5)  # 페이지 로딩 대기 (CI 환경은 느릴 수 있음)
 
+            # 임시 저장 글 alert 처리 (current_url 접근 전에 반드시 처리)
+            self._handle_alert(accept=False)
+            time.sleep(0.5)
+
             # 현재 URL 확인 (리다이렉트 감지)
-            current_url = self.driver.current_url
+            try:
+                current_url = self.driver.current_url
+            except Exception as e:
+                self._log(f"   ⚠️ URL 접근 실패 (alert 잔존?): {e}")
+                self._handle_alert(accept=False)  # 한번 더 시도
+                time.sleep(1)
+                try:
+                    current_url = self.driver.current_url
+                except Exception:
+                    self._log("   ❌ URL 접근 완전 실패, 재시도...")
+                    continue
             self._log(f"   📍 현재 URL: {current_url}")
 
             # 로그인 페이지로 리다이렉트된 경우
@@ -135,10 +149,6 @@ class TistoryPublisher:
                 except Exception:
                     pass
                 continue
-
-            # 임시 저장 글 alert 처리
-            self._handle_alert(accept=False)
-            time.sleep(1)
 
             # 글쓰기 페이지 로딩 확인 (30초 대기)
             try:
