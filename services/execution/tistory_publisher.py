@@ -90,7 +90,7 @@ class TistoryPublisher:
             from selenium.webdriver.support.ui import WebDriverWait
             from selenium.webdriver.support import expected_conditions as EC
 
-            alert = WebDriverWait(self.driver, 3).until(
+            alert = WebDriverWait(self.driver, 1).until(
                 EC.alert_is_present()
             )
             alert_text = alert.text
@@ -111,17 +111,34 @@ class TistoryPublisher:
 
         editor_url = f"{self.blog_url}/manage/newpost"
 
-        for attempt in range(2):  # 최대 2회 시도
+        for attempt in range(3):  # 최대 3회 시도
             if attempt > 0:
-                self._log(f"🔄 글쓰기 페이지 재시도 ({attempt + 1}/2)...")
+                self._log(f"🔄 글쓰기 페이지 재시도 ({attempt + 1}/3)...")
 
             self.driver.get(editor_url)
-            time.sleep(3)
+            time.sleep(5)  # 페이지 로딩 대기 (CI 환경은 느릴 수 있음)
 
-            # 임시 저장 글 alert 처리 (여러 번 체크 — 늦게 뜰 수 있음)
-            for _ in range(3):
-                self._handle_alert(accept=False)
-                time.sleep(0.5)
+            # 현재 URL 확인 (리다이렉트 감지)
+            current_url = self.driver.current_url
+            self._log(f"   📍 현재 URL: {current_url}")
+
+            # 로그인 페이지로 리다이렉트된 경우
+            if "accounts.kakao.com" in current_url or "/login" in current_url:
+                self._log("   ⚠️ 로그인 페이지로 리다이렉트됨 — 쿠키 만료 가능")
+                # 쿠키 재로딩 시도
+                try:
+                    if self.login.login_with_cookies_only():
+                        self.driver = self.login.get_driver()
+                        self._log("   🔄 쿠키 재로딩 성공")
+                    else:
+                        self._log("   ❌ 쿠키 재로딩 실패")
+                except Exception:
+                    pass
+                continue
+
+            # 임시 저장 글 alert 처리
+            self._handle_alert(accept=False)
+            time.sleep(1)
 
             # 글쓰기 페이지 로딩 확인 (30초 대기)
             try:
@@ -131,10 +148,20 @@ class TistoryPublisher:
                 self._log("✅ 글쓰기 페이지 로딩 완료")
                 return True
             except Exception as e:
-                self._log(f"⚠️ 글쓰기 페이지 로딩 대기 실패 (시도 {attempt + 1}): {e}")
-                # 혹시 alert가 뒤늦게 떴을 수 있으므로 다시 처리
+                # 디버깅: 현재 페이지 HTML 일부 로깅
+                try:
+                    page_title = self.driver.title
+                    page_url = self.driver.current_url
+                    page_snippet = self.driver.page_source[:500] if self.driver.page_source else "(empty)"
+                    self._log(f"   ⚠️ 로딩 실패 디버그:")
+                    self._log(f"      Title: {page_title}")
+                    self._log(f"      URL: {page_url}")
+                    self._log(f"      HTML: {page_snippet[:200]}")
+                except Exception:
+                    pass
+                self._log(f"⚠️ 글쓰기 페이지 로딩 대기 실패 (시도 {attempt + 1}): {str(e)[:100]}")
                 self._handle_alert(accept=False)
-                time.sleep(1)
+                time.sleep(2)
 
         self._log("❌ 글쓰기 페이지 로딩 최종 실패")
         return False
