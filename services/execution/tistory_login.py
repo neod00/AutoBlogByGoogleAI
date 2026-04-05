@@ -435,10 +435,13 @@ class TistoryAutoLogin:
             for i in range(max_wait):
                 time.sleep(1)
                 
+                # 매 5초마다 OAuth '계속하기' 버튼 체크 및 클릭
+                if i > 0 and i % 5 == 0:
+                    self._handle_oauth_consent()
+                
                 if i > 0 and i % 30 == 0:
                     self._log(f"   대기 중... ({i}초 경과)")
                     try:
-                        # 화면 캡처 저장 (GitHub Actions Artifact용)
                         self.driver.save_screenshot(f"/tmp/kakao_debug_{i}.png")
                         self._log(f"   📸 Debug 캡처 저장됨: kakao_debug_{i}.png")
                     except Exception as e:
@@ -449,7 +452,7 @@ class TistoryAutoLogin:
                     self._save_cookies()
                     return True
             
-            # ⑦ OAuth 동의 화면 처리
+            # ⑦ 최종 시도: OAuth 동의 화면 처리
             self._handle_oauth_consent()
             time.sleep(3)
             
