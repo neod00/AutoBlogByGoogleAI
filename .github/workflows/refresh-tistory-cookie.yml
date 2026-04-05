@@ -1,0 +1,67 @@
+name: Tistory Auto Cookie Refresh
+
+on:
+  repository_dispatch:
+    types: [refresh_cookie]
+  workflow_dispatch:
+
+jobs:
+  refresh-cookie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager python-dotenv
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libxss1 libasound2t64 libatk-bridge2.0-0t64 libgtk-3-0 libgbm1 libdrm2 xvfb
+
+      - name: Attempt Auto Login
+        env:
+          TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
+          TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          echo "🚀 카카오 자동 로그인을 시작합니다. 핸드폰 카카오톡 알림을 확인 후 승인해 주세요!"
+          xvfb-run --auto-servernum python services/execution/tistory_login.py --mode auto --headless || true
+
+      - name: Convert and Update Secret
+        env:
+          GH_TOKEN: ${{ secrets.REPO_PAT }}
+          APP_URL: https://auto-blog-by-google-ai.vercel.app
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          COOKIE_FILE=$(find ~/.tistory_login/cookies -name "*_cookies.pkl" 2>/dev/null | head -n 1)
+          if [ -z "$COOKIE_FILE" ]; then
+            echo "❌ 쿠키 파싱 실패: 파일이 생성되지 않았습니다 (로그인 실패 또는 타임아웃)"
+            curl -s -X POST "$APP_URL/api/admin/cookie-status" \
+              -H "Authorization: Bearer $ADMIN_PASSWORD" \
+              -H "Content-Type: application/json" \
+              -d '{"status": "expired", "error": "로그인 시간초과 또는 캡차 차단"}'
+            exit 1
+          fi
+          
+          echo "✅ 쿠키 파일 발견: $COOKIE_FILE"
+          B64_COOKIE=$(base64 -w 0 "$COOKIE_FILE")
+          
+          if [ -z "$GH_TOKEN" ]; then
+            echo "⚠️ [주의] REPO_PAT Secret이 설정되지 않아 자동으로 Secrets를 업데이트할 수 없습니다!"
+            exit 1
+          fi
+          
+          gh secret set TISTORY_COOKIES_B64 --body "$B64_COOKIE"
+          echo "✅ GitHub Secrets (TISTORY_COOKIES_B64) 갱신 완료!"
+          
+          # Vercel Admin에 '정상' 상태 보고
+          curl -s -X POST "$APP_URL/api/admin/cookie-status" \
+            -H "Authorization: Bearer $ADMIN_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -d '{"status": "valid", "error": ""}'
+          echo "✅ 대시보드 상태 업데이트 완료!"

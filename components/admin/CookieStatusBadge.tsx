@@ -156,9 +156,29 @@ const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
             )}
             {status === 'expired' && (
               <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                  💡 로컬 노트북에서 수동 로그인이 필요합니다. 로그인 후 쿠키를 다시 GitHub Secrets에 업로드하세요.
+                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed mb-3">
+                  💡 노트북 수동 로그인 대신 자동 쿠키 갱신(핸드폰 앱 승인)을 요청할 수 있습니다.
                 </p>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!confirm('카카오 자동 로그인을 요청하시겠습니까? (핸드폰 카톡 알림 대기 필수)')) return;
+                    
+                    try {
+                      const res = await fetch('/api/admin/trigger-refresh-cookie', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                      });
+                      if (res.ok) alert('요청이 전송되었습니다! 약 30~40초 뒤 폰으로 카카오 알림이 오면 승인해주세요.');
+                      else alert('요청에 실패했습니다.');
+                    } catch(err) {
+                      alert('요청 중 에러가 발생했습니다.');
+                    }
+                  }}
+                  className="w-full py-2 px-3 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-800/60 text-amber-800 dark:text-amber-300 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                >
+                  🔄 원클릭 자동 갱신 요청
+                </button>
               </div>
             )}
             {status === 'unknown' && (

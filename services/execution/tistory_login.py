@@ -437,6 +437,12 @@ class TistoryAutoLogin:
                 
                 if i > 0 and i % 30 == 0:
                     self._log(f"   대기 중... ({i}초 경과)")
+                    try:
+                        # 화면 캡처 저장 (GitHub Actions Artifact용)
+                        self.driver.save_screenshot(f"/tmp/kakao_debug_{i}.png")
+                        self._log(f"   📸 Debug 캡처 저장됨: kakao_debug_{i}.png")
+                    except Exception as e:
+                        self._log(f"   ⚠️ 캡처 실패: {e}")
                 
                 if self._check_login_status():
                     self._log("✅ 로그인 성공!")
@@ -629,7 +635,11 @@ if __name__ == "__main__":
     if success:
         print("🎉 로그인 성공!")
         print(f"🌐 현재 URL: {login.get_driver().current_url}")
-        input("Enter 키를 누르면 브라우저를 종료합니다...")
+        if not args.headless:
+            try:
+                input("Enter 키를 누르면 브라우저를 종료합니다...")
+            except EOFError:
+                pass
     else:
         print("❌ 로그인 실패")
     
