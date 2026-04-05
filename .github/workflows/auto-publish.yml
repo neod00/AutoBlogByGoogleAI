@@ -121,5 +121,6 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ github.event.client_payload.recipientEmail || secrets.GMAIL_USER }}
         run: |
           npx tsx scripts/send-result-email.ts

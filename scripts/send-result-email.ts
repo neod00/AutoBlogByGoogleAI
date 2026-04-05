@@ -94,14 +94,16 @@ async function main() {
     ? `✅ 블로그 발행 완료: ${result.title.substring(0, 40)}`
     : `❌ 블로그 발행 실패: ${result.error}`;
 
+  const recipientEmail = process.env.RECIPIENT_EMAIL || GMAIL_USER;
+
   await transporter.sendMail({
     from: GMAIL_USER,
-    to: GMAIL_USER,
+    to: recipientEmail,
     subject,
     html,
   });
 
-  console.log(`[email] Sent to ${GMAIL_USER}: ${subject}`);
+  console.log(`[email] Sent to ${recipientEmail}: ${subject}`);
 }
 
 main().catch(err => {

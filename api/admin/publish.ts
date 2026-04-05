@@ -25,6 +25,13 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    // Redis에서 관리자 설정(이메일 등) 읽어오기
+    let recipientEmail = '';
+    const settings = await redis.get<any>('admin:settings');
+    if (settings && settings.recipientEmail) {
+      recipientEmail = settings.recipientEmail;
+    }
+
     // 1. 트리거 GitHub Actions
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
@@ -41,6 +48,7 @@ export default async function handler(req: any, res: any) {
             topic: topic,
             template: template,
             publish_id: id || '', // 추후 웹훅으로 성공 완료 처리 시 사용 가능
+            recipientEmail: recipientEmail,
           },
         }),
       }

@@ -245,11 +245,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
           </h2>
           <form onSubmit={handleSaveSettings} className="space-y-4">
              <div>
-              <label className="block text-sm font-medium mb-1 opacity-80">결과 알림 수신 이메일</label>
+              <label className="block text-sm font-medium mb-1 opacity-80">결과 알림 수신 이메일 (쉼표로 여러 개 입력)</label>
               <input
-                type="email"
+                type="text"
                 value={settings.recipientEmail || ''}
                 onChange={e => setSettings({...settings, recipientEmail: e.target.value})}
+                placeholder="예: admin@example.com, dev@example.com"
                 className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
               />
             </div>

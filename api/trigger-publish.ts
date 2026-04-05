@@ -32,6 +32,17 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
+    const { redis } = require('./_lib/redis.js');
+    let recipientEmail = '';
+    try {
+      const settings = await redis.get('admin:settings');
+      if (settings && settings.recipientEmail) {
+        recipientEmail = settings.recipientEmail;
+      }
+    } catch(e) {
+      console.error(e);
+    }
+
     // GitHub repository_dispatch 이벤트 전송
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
@@ -47,6 +58,7 @@ export default async function handler(req: any, res: any) {
           client_payload: {
             topic: decodeURIComponent(topic as string),
             template: template as string,
+            recipientEmail: recipientEmail,
           },
         }),
       }
