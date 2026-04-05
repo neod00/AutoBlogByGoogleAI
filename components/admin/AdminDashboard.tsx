@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import CookieStatusBadge from './CookieStatusBadge';
 
 interface Topic {
   id: string;
@@ -182,6 +183,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
       {/* Left Column: Quick Add & Settings */}
       <div className="space-y-8 lg:col-span-1">
         
+        {/* Cookie Status Badge */}
+        <CookieStatusBadge token={token} />
+
         {/* Quick Add Card */}
         <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl">
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2">

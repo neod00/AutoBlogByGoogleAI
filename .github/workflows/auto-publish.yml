@@ -83,6 +83,38 @@ jobs:
         if: failure()
         run: cat /tmp/chromedriver.log || echo "No chromedriver log found"
 
+      # 7.2 Report cookie status to Admin Dashboard
+      - name: Report cookie status
+        if: always()
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          APP_URL: https://auto-blog-by-google-ai.vercel.app
+        run: |
+          if [ -f /tmp/publish_result.json ]; then
+            ERROR=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('error',''))")
+            SUCCESS=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('success', False))")
+
+            if [ "$SUCCESS" = "True" ]; then
+              STATUS="valid"
+              ERROR_MSG=""
+            elif echo "$ERROR" | grep -qiE "로그인|login|cookie|쿠키|로딩 실패|redirect"; then
+              STATUS="expired"
+              ERROR_MSG="$ERROR"
+            else
+              STATUS="valid"
+              ERROR_MSG=""
+            fi
+          else
+            STATUS="unknown"
+            ERROR_MSG="publish_result.json not found"
+          fi
+
+          echo "Reporting cookie status: $STATUS"
+          curl -s -X POST "$APP_URL/api/admin/cookie-status" \
+            -H "Authorization: Bearer $ADMIN_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -d "{\"status\": \"$STATUS\", \"error\": \"$ERROR_MSG\"}" || echo "Warning: Failed to report cookie status"
+
       # 8. Send result email
       - name: Send notification email
         if: always()
