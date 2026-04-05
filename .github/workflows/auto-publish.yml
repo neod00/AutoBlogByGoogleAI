@@ -52,8 +52,8 @@ jobs:
           mkdir -p ~/.tistory_login/cookies
           echo "${{ secrets.TISTORY_COOKIES_B64 }}" | base64 -d > ~/.tistory_login/cookies/default_cookies.pkl
 
-      # 6. Generate + Quality Gate (자동 재시도 최대 3회)
-      - name: Generate and Validate Content
+      # 6. Generate blog post
+      - name: Generate blog content
         id: generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -61,41 +61,22 @@ jobs:
           PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
           PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'review' }}
         run: |
-          MAX_ATTEMPTS=3
-          ATTEMPT=1
-          
-          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo ""
-            echo "=========================================="
-            echo "📝 콘텐츠 생성 시도 $ATTEMPT/$MAX_ATTEMPTS"
-            echo "=========================================="
-            
-            npx tsx scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
-            cat /tmp/blog_output.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Title: {d.get(\"title\",\"?\")[:60]}')"
-            
-            echo ""
-            echo "🛡️ Quality Gate 검증..."
-            if python scripts/quality_gate.py --content-file /tmp/blog_output.json --topic "$PUBLISH_TOPIC"; then
-              echo "✅ Quality Gate 통과! 발행을 진행합니다."
-              echo "gate_passed=true" >> $GITHUB_OUTPUT
-              exit 0
-            else
-              echo "❌ Quality Gate 실패 (시도 $ATTEMPT/$MAX_ATTEMPTS)"
-              if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
-                echo "🔄 15초 후 재생성합니다..."
-                sleep 15
-              fi
-            fi
-            
-            ATTEMPT=$((ATTEMPT + 1))
-          done
-          
-          echo "🚫 $MAX_ATTEMPTS회 시도 모두 실패 — 발행을 건너뜁니다."
-          echo "gate_passed=false" >> $GITHUB_OUTPUT
+          echo "Generating blog post for: $PUBLISH_TOPIC"
+          npx tsx scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
+          cat /tmp/blog_output.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Title: {d.get(\"title\",\"?\")[:60]}')"
+
+      # 6.5 Quality Gate
+      - name: Quality Gate
+        id: quality_gate
+        env:
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
+        run: |
+          echo "🛡️ Quality Gate 검증 시작..."
+          python scripts/quality_gate.py --content-file /tmp/blog_output.json --topic "$PUBLISH_TOPIC"
 
       # 7. Publish to Tistory (Quality Gate 통과 시에만 실행)
       - name: Publish to Tistory
-        if: steps.generate.outputs.gate_passed == 'true'
+        if: steps.quality_gate.outcome == 'success'
         id: publish
         env:
           TISTORY_BLOG_URL: https://climate-insight.tistory.com
