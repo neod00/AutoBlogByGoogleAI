@@ -51,6 +51,29 @@ async function main() {
   const statusEmoji = result.success ? "✅" : "❌";
   const statusText = result.success ? "발행 성공" : "발행 실패";
 
+  // Quality Gate 결과 로드
+  let qgHtml = "";
+  const qgPath = "/tmp/quality_gate_result.json";
+  if (existsSync(qgPath)) {
+    try {
+      const qg = JSON.parse(readFileSync(qgPath, "utf-8"));
+      const items = (qg.details || [])
+        .map((d: any) => `<div style="padding:4px 0;font-size:13px;">${d.icon} <strong>${d.name}</strong>${d.detail ? ` — ${d.detail}` : ""}</div>`)
+        .join("");
+      const qgStatus = qg.passed ? "🎉 PASS" : "🚫 FAIL";
+      const qgColor = qg.passed ? "#10b981" : "#ef4444";
+      qgHtml = `
+        <div style="background:#f8fafc;padding:16px 20px;border-radius:8px;border:1px solid #e2e8f0;margin-top:16px;">
+          <h3 style="margin:0 0 12px;font-size:15px;color:#334155;">🛡️ Quality Gate <span style="color:${qgColor}">${qgStatus}</span>
+            <span style="font-weight:normal;color:#94a3b8;font-size:12px;"> (✅${qg.passed_count} ❌${qg.failed_count} ⚠️${qg.warning_count})</span>
+          </h3>
+          ${items}
+        </div>`;
+    } catch(e) {
+      console.error("[email] Failed to load quality gate result:", e);
+    }
+  }
+
   const html = `
     <div style="font-family: 'Apple SD Gothic Neo', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="background: ${result.success ? "linear-gradient(135deg, #10b981, #059669)" : "linear-gradient(135deg, #ef4444, #dc2626)"}; 
@@ -83,6 +106,8 @@ async function main() {
           </tr>` : ""}
         </table>
       </div>
+
+      ${qgHtml}
 
       <p style="color: #94a3b8; font-size: 12px; margin-top: 20px; text-align: center;">
         AutoBlogByGoogleAI · Automated Publishing Pipeline
