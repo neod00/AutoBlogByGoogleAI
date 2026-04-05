@@ -42,6 +42,137 @@ const tplReview = loadDirective("tpl_review.md");
 const tplInterview = loadDirective("tpl_interview.md");
 const tplQA = loadDirective("tpl_qa.md");
 const tplInvestment = loadDirective("tpl_investment.md");
+const imagePlacementInstructions = loadDirective("image_placement_instructions.md");
+
+// ── Pexels API ──────────────────────────────────────────────
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY || "";
+
+interface PexelsPhoto {
+  id: number;
+  src: { large: string };
+}
+
+interface ImagePlacement {
+  position: string;
+  imageUrl: string;
+  caption: string;
+}
+
+async function fetchImagesFromPexels(query: string, count: number = 5): Promise<PexelsPhoto[]> {
+  if (!PEXELS_API_KEY) {
+    console.error("[images] PEXELS_API_KEY not set, skipping images");
+    return [];
+  }
+  try {
+    const response = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&locale=ko-KR`,
+      { headers: { Authorization: PEXELS_API_KEY } }
+    );
+    const data = await response.json() as { photos: PexelsPhoto[] };
+    return data.photos || [];
+  } catch (error) {
+    console.error(`[images] Pexels fetch error for "${query}":`, error);
+    return [];
+  }
+}
+
+async function fetchAndInjectImages(post: string): Promise<string> {
+  if (!PEXELS_API_KEY) {
+    console.error("[images] No PEXELS_API_KEY, returning post without images");
+    return post;
+  }
+
+  try {
+    // Step 1: AI analyzes post and generates image placement data
+    console.error("[images] Analyzing post for image placements...");
+    const analysisPrompt = `${imagePlacementInstructions}\n\n---\n\n다음 블로그 글을 분석하고 이미지 배치 정보를 생성하세요:\n\n${post}`;
+
+    const analysisResult = await genAI.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
+    });
+
+    const analysisText = (analysisResult as any).text || "";
+
+    // Step 2: Parse [IMAGE_PLACEMENTS] block
+    const placementsMatch = analysisText.match(/\[IMAGE_PLACEMENTS\]([\s\S]*?)\[\/IMAGE_PLACEMENTS\]/);
+    if (!placementsMatch) {
+      console.error("[images] No IMAGE_PLACEMENTS found in AI response, skipping");
+      return post;
+    }
+
+    const imgMatches = placementsMatch[1].matchAll(/\[IMG\d+\]([\s\S]*?)\[\/IMG\d+\]/g);
+    const placements: ImagePlacement[] = [];
+    const usedPhotoIds = new Set<number>();
+
+    for (const match of imgMatches) {
+      const block = match[1];
+      const posMatch = block.match(/position:\s*(.+)/);
+      const promptMatch = block.match(/imagePrompt:\s*(.+)/);
+      const captionMatch = block.match(/caption:\s*(.+)/);
+
+      if (posMatch && promptMatch && captionMatch) {
+        const position = posMatch[1].trim();
+        const imagePrompt = promptMatch[1].trim();
+        const caption = captionMatch[1].trim();
+
+        console.error(`[images] Searching Pexels: "${imagePrompt}"`);
+        const photos = await fetchImagesFromPexels(imagePrompt);
+        const uniquePhoto = photos.find(p => !usedPhotoIds.has(p.id));
+
+        if (uniquePhoto) {
+          usedPhotoIds.add(uniquePhoto.id);
+          placements.push({ position, imageUrl: uniquePhoto.src.large, caption });
+          console.error(`[images] ✅ Found image for "${imagePrompt}"`);
+        } else if (photos.length > 0) {
+          placements.push({ position, imageUrl: photos[0].src.large, caption });
+          console.error(`[images] ✅ Found image (fallback) for "${imagePrompt}"`);
+        } else {
+          console.error(`[images] ❌ No image found for "${imagePrompt}"`);
+        }
+      }
+    }
+
+    // Step 3: Inject images at positions (reverse order to preserve indices)
+    if (placements.length === 0) return post;
+
+    console.error(`[images] Injecting ${placements.length} images into post...`);
+    let result = post;
+
+    const sortedPlacements = [...placements].sort((a, b) => {
+      const getIdx = (pos: string) => {
+        const m = pos.match(/:(\d+)/);
+        return m ? parseInt(m[1], 10) : 0;
+      };
+      return getIdx(b.position) - getIdx(a.position);
+    });
+
+    for (const { position, imageUrl, caption } of sortedPlacements) {
+      const figureHtml = `\n<figure style="margin: 2.5em 0; text-align: center;"><img src="${imageUrl}" alt="${caption}" style="max-width: 100%; border-radius: 8px;" /><figcaption style="font-size: 0.9em; color: #666; margin-top: 0.5em;">${caption}</figcaption></figure>\n`;
+
+      if (position.startsWith("after_h2:")) {
+        const n = parseInt(position.split(":")[1], 10);
+        let count = 0;
+        result = result.replace(/<\/h2>/gi, (m) => {
+          count++;
+          return count === n ? m + figureHtml : m;
+        });
+      } else if (position.startsWith("paragraph:")) {
+        const n = parseInt(position.split(":")[1], 10);
+        let count = 0;
+        result = result.replace(/<\/p>/gi, (m) => {
+          count++;
+          return count === n ? m + figureHtml : m;
+        });
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[images] Image injection error:", error);
+    return post;
+  }
+}
 
 function getTemplateDirective(template: string): string {
   switch (template) {
@@ -200,6 +331,10 @@ async function main() {
     refHtml += "</ul></div>";
     post += refHtml;
   }
+
+  // ── Inject images from Pexels ──
+  console.error("[generate] Fetching and injecting images...");
+  post = await fetchAndInjectImages(post);
 
   // ── Classify category ──
   console.error("[generate] Classifying category...");
