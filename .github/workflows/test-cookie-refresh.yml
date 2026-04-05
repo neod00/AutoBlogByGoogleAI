@@ -1,0 +1,33 @@
+name: Test Auto Cookie Refresh (PoC)
+
+on:
+  workflow_dispatch: # 수동으로만 트리거 가능
+
+jobs:
+  test-kakao-login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install selenium webdriver-manager python-dotenv
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libxss1 libasound2t64 libatk-bridge2.0-0t64 libgtk-3-0 libgbm1 libdrm2 xvfb
+
+      - name: Attempt Auto Login (Testing Kakao Security)
+        env:
+          TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
+          TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
+        run: |
+          echo "=========================================================="
+          echo "🚀 카카오 자동 로그인 시도 중..."
+          echo "만약 이 시점에서 멈춰있다면 핸드폰 카카오톡 알림을 확인하세요!"
+          echo "=========================================================="
+          xvfb-run --auto-servernum python services/execution/tistory_login.py --mode auto --headless
