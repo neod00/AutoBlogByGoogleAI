@@ -25,9 +25,18 @@ jobs:
         env:
           TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
           TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
+          PYTHONUNBUFFERED: "1"
         run: |
           echo "=========================================================="
           echo "🚀 카카오 자동 로그인 시도 중..."
           echo "만약 이 시점에서 멈춰있다면 핸드폰 카카오톡 알림을 확인하세요!"
           echo "=========================================================="
-          xvfb-run --auto-servernum python services/execution/tistory_login.py --mode auto --headless
+          xvfb-run --auto-servernum python services/execution/tistory_login.py --mode auto --headless || true
+
+      - name: Upload Debug Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kakao-debug-screenshots
+          path: /tmp/kakao_debug_*.png
+          retention-days: 1

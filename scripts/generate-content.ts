@@ -148,21 +148,26 @@ async function fetchAndInjectImages(post: string): Promise<string> {
     });
 
     for (const { position, imageUrl, caption } of sortedPlacements) {
-      const figureHtml = `\n<figure style="margin: 2.5em 0; text-align: center;"><img src="${imageUrl}" alt="${caption}" style="max-width: 100%; border-radius: 8px;" /><figcaption style="font-size: 0.9em; color: #666; margin-top: 0.5em;">${caption}</figcaption></figure>\n`;
+      // Tistory's TinyMCE editor often strips <figure> and <figcaption> tags. 
+      // Using standard <p> wrappers with inline styles is much safer for preserving external images.
+      const imageHtml = `
+<p style="text-align: center; margin: 2.5em 0 0.5em 0;"><img src="${imageUrl}" alt="${caption}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" /></p>
+<p style="text-align: center; font-size: 0.9em; color: #888; margin-bottom: 2.5em;">${caption}</p>
+`;
 
       if (position.startsWith("after_h2:")) {
         const n = parseInt(position.split(":")[1], 10);
         let count = 0;
         result = result.replace(/<\/h2>/gi, (m) => {
           count++;
-          return count === n ? m + figureHtml : m;
+          return count === n ? m + imageHtml : m;
         });
       } else if (position.startsWith("paragraph:")) {
         const n = parseInt(position.split(":")[1], 10);
         let count = 0;
         result = result.replace(/<\/p>/gi, (m) => {
           count++;
-          return count === n ? m + figureHtml : m;
+          return count === n ? m + imageHtml : m;
         });
       }
     }
