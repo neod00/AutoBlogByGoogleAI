@@ -31,6 +31,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [settings, setSettings] = useState({ recipientEmail: '', dailyTopic: '' });
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // New Topic Form
   const [newTitle, setNewTitle] = useState('');
@@ -46,6 +47,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   const [editTopicTemplate, setEditTopicTemplate] = useState('review');
 
   const fetchTopics = async () => {
+    setIsRefreshing(true);
     const res = await fetch('/api/admin/topics', {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -53,6 +55,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
       const data = await res.json();
       setTopics(data.topics || []);
     }
+    setIsRefreshing(false);
   };
 
   const fetchSettings = async () => {
@@ -107,6 +110,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     fetchTopics();
+  };
+
+  const handleResetStatus = async (id: string) => {
+    if (!window.confirm('실제로 발행이 진행 중일 수도 있습니다. 상태를 [발행 대기]로 초기화하시겠습니까?')) return;
+    try {
+      await fetch('/api/admin/topics', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ id, status: 'pending' })
+      });
+      fetchTopics();
+    } catch (err) {
+      alert("상태 초기화에 실패했습니다.");
+    }
   };
 
   const handleEditStart = (topic: Topic) => {
@@ -283,8 +303,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
             <h2 className="text-xl font-bold flex items-center gap-2">
               📋 발행 대기열 (Queue)
             </h2>
-            <button onClick={fetchTopics} className="text-sm px-3 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition">
-              🔄 새로고침
+            <button onClick={fetchTopics} disabled={isRefreshing} className="text-sm px-3 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition disabled:opacity-50 flex items-center gap-1">
+              <span className={isRefreshing ? 'animate-spin inline-block' : ''}>🔄</span>
+              {isRefreshing ? '새로고침 중...' : '새로고침'}
             </button>
           </div>
 
@@ -347,7 +368,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-2 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        {topic.status !== 'publishing' && (
+                        {topic.status === 'publishing' || topic.status === 'failed' ? (
+                          <>
+                            <button 
+                              onClick={() => handleResetStatus(topic.id)}
+                              className="px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                            >
+                              취소 및 초기화
+                            </button>
+                            <button 
+                              onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
+                              className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
+                            >
+                              ▶ 재발행
+                            </button>
+                            {topic.status === 'failed' && (
+                              <button 
+                                onClick={() => handleDeleteTopic(topic.id)}
+                                className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </>
+                        ) : (
                           <>
                             <button 
                               onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}

@@ -26,6 +26,7 @@ export default async function handler(req: any, res: any) {
   try {
     // GET: 쿠키 상태 조회
     if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       const data = await redis.get<CookieStatus>(KV_KEY) || DEFAULT_STATUS;
       return res.status(200).json({ cookieStatus: data });
     }

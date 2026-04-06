@@ -12,6 +12,7 @@ export default async function handler(req: any, res: any) {
   try {
     // GET: 주제 목록 조회
     if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       const topics = await redis.get<any[]>(key);
       return res.status(200).json({ topics: topics || [] });
     }
