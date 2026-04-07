@@ -123,3 +123,25 @@ jobs:
           RECIPIENT_EMAIL: ${{ github.event.client_payload.recipientEmail || secrets.GMAIL_USER }}
         run: |
           npx tsx scripts/send-result-email.ts
+
+      # 9. Update Vercel Topic Status
+      - name: Update topic status
+        if: always()
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          APP_URL: https://auto-blog-by-google-ai.vercel.app
+          PUBLISH_ID: ${{ github.event.client_payload.publish_id }}
+        run: |
+          if [ -n "$PUBLISH_ID" ]; then
+            if [ "${{ job.status }}" = "success" ]; then
+              STATUS="published"
+            else
+              STATUS="failed"
+            fi
+            
+            echo "Updating Vercel topic ($PUBLISH_ID) status to: $STATUS"
+            curl -s -X PUT "$APP_URL/api/admin/topics" \
+              -H "Authorization: Bearer $ADMIN_PASSWORD" \
+              -H "Content-Type: application/json" \
+              -d "{\"id\": \"$PUBLISH_ID\", \"status\": \"$STATUS\"}"
+          fi
