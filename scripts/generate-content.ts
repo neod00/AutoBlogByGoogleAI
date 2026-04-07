@@ -281,9 +281,9 @@ async function main() {
       break;
     } catch (e: any) {
       attempt++;
-      if (attempt > maxRetries || !e.message?.includes("429")) throw e;
+      if (attempt > maxRetries || (!e.message?.includes("429") && !e.message?.includes("503"))) throw e;
       const delay = Math.pow(2, attempt) * 2000;
-      console.error(`[generate] Rate limit. Retry in ${delay}ms...`);
+      console.error(`[generate] Rate limit or high demand (503). Retry in ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
