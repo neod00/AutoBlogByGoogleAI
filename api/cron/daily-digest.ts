@@ -46,18 +46,23 @@ interface DiscoveredKeyword {
   discoveredAt: string;
 }
 
-async function discoverSEOKeywords(seeds: string[]): Promise<DiscoveredKeyword[]> {
-    if (!API_KEY) throw new Error("API_KEY not set");
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+// 무료 API Rate Limit 방어: 시드별 순차 호출 + 딜레이
+const MAX_SEEDS_PER_RUN = 5;
+const DELAY_BETWEEN_CALLS_MS = 3000;
 
-    const seedList = seeds.join(", ");
+function delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 단일 시드 발굴
+async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredKeyword[]> {
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const prompt = `
 You are a veteran SEO strategist with 30 years of blogging experience and 1M+ subscribers.
 Today is ${today}.
 
-TASK: Analyze trending topics related to these seed keywords: "${seedList}"
+TASK: Analyze trending topics related to this single seed keyword: "${seed}"
 Find SEO-optimized blog keyword opportunities that meet ALL these criteria:
 1. Currently trending or gaining interest in the last 24 hours
 2. Information-seeking (정보탐색형) long-tail keywords, NOT celebrity gossip or weather
@@ -65,12 +70,12 @@ Find SEO-optimized blog keyword opportunities that meet ALL these criteria:
 4. Can be turned into a useful "guide", "analysis", or "comparison" blog post
 5. Have potential for high dwell time (체류시간)
 
-For each seed keyword, produce exactly 2 keyword sets (total ${seeds.length * 2} sets).
+Produce exactly 2 keyword sets for the seed "${seed}".
 
 STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 [
   {
-    "seed": "the original seed keyword",
+    "seed": "${seed}",
     "mainKeyword": "SEO-optimized main keyword in Korean (long-tail, 10+ chars)",
     "subKeywords": ["sub keyword 1", "sub keyword 2", "sub keyword 3"],
     "suggestedTitle": "Click-worthy blog title in Korean with numbers or specific value proposition",
@@ -106,7 +111,7 @@ IMPORTANT:
 
         return parsed.map((item: any) => ({
             id: `kw_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            seed: item.seed || '',
+            seed: item.seed || seed,
             mainKeyword: item.mainKeyword || '',
             subKeywords: item.subKeywords || [],
             suggestedTitle: item.suggestedTitle || '',
@@ -119,10 +124,44 @@ IMPORTANT:
             discoveredAt: new Date().toISOString(),
         }));
     } catch (e) {
-        console.error("Failed to parse keyword discovery response:", e);
+        console.error(`Failed to parse response for seed "${seed}":`, e);
         console.error("Raw text:", text);
         return [];
     }
+}
+
+// 전체 시드 순차 처리
+async function discoverSEOKeywords(seeds: string[]): Promise<DiscoveredKeyword[]> {
+    if (!API_KEY) throw new Error("API_KEY not set");
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+    let selectedSeeds = seeds;
+    if (seeds.length > MAX_SEEDS_PER_RUN) {
+        const shuffled = [...seeds].sort(() => Math.random() - 0.5);
+        selectedSeeds = shuffled.slice(0, MAX_SEEDS_PER_RUN);
+        console.log(`Too many seeds in cron. Selected ${MAX_SEEDS_PER_RUN}: ${selectedSeeds.join(', ')}`);
+    }
+
+    const allKeywords: DiscoveredKeyword[] = [];
+
+    for (let i = 0; i < selectedSeeds.length; i++) {
+        const seed = selectedSeeds[i];
+        console.log(`[Cron ${i + 1}/${selectedSeeds.length}] Discovering for: "${seed}"`);
+
+        try {
+            const keywords = await discoverForSingleSeed(ai, seed);
+            allKeywords.push(...keywords);
+            console.log(`  → Found ${keywords.length} keywords`);
+        } catch (e: any) {
+            console.error(`  → ERROR for seed "${seed}":`, e.message);
+        }
+
+        if (i < selectedSeeds.length - 1) {
+            await delay(DELAY_BETWEEN_CALLS_MS);
+        }
+    }
+
+    return allKeywords;
 }
 
 // Difficulty badge color helper
