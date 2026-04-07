@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CookieStatusBadge from './CookieStatusBadge';
+import KeywordDiscovery from './KeywordDiscovery';
 
 interface Topic {
   id: string;
@@ -7,11 +8,15 @@ interface Topic {
   template: string;
   status: 'pending' | 'publishing' | 'published' | 'failed';
   createdAt: string;
+  source?: string;
+  mainKeyword?: string;
 }
 
 interface AdminDashboardProps {
   token: string;
 }
+
+type TabKey = 'keywords' | 'queue' | 'settings';
 
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800',
@@ -27,7 +32,14 @@ const STATUS_LABELS = {
   failed: '발행 실패'
 };
 
+const TAB_CONFIG: { key: TabKey; icon: string; label: string; description: string }[] = [
+  { key: 'keywords', icon: '🔍', label: 'SEO 키워드 발굴', description: 'AI가 분석한 롱테일 키워드' },
+  { key: 'queue', icon: '📋', label: '발행 대기열', description: '저장된 주제 큐 관리' },
+  { key: 'settings', icon: '⚙️', label: '설정', description: '시드 키워드 · 이메일 · 블로그 설정' },
+];
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
+  const [activeTab, setActiveTab] = useState<TabKey>('keywords');
   const [topics, setTopics] = useState<Topic[]>([]);
   const [settings, setSettings] = useState({ recipientEmail: '', dailyTopic: '' });
   const [loading, setLoading] = useState(true);
@@ -100,6 +112,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
       setNewTitle('');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Called from KeywordDiscovery when user approves a keyword
+  const handleAddFromKeyword = async (title: string, template: string) => {
+    try {
+      await fetch('/api/admin/topics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ title, template })
+      });
+      fetchTopics();
+    } catch (e) {
+      console.error('Add from keyword error:', e);
     }
   };
 
@@ -198,231 +227,282 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      
-      {/* Left Column: Quick Add & Settings */}
-      <div className="space-y-8 lg:col-span-1">
-        
-        {/* Cookie Status Badge */}
-        <CookieStatusBadge token={token} />
+    <div className="space-y-6">
 
-        {/* Quick Add Card */}
-        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            ✨ 새로운 주제 추가
-          </h2>
-          <form className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-80">발행할 키워드 또는 기사 제목</label>
-              <textarea
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none resize-none h-24"
-                placeholder="예: 미국 연준 금리 인하 기대감 확산"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-80">블로그 템플릿</label>
-              <select
-                value={newTemplate}
-                onChange={e => setNewTemplate(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
-              >
-                <option value="default">기본 뉴스 분석</option>
-                <option value="review">제품/서비스 리뷰</option>
-                <option value="interview">전문가 인터뷰</option>
-                <option value="qa">Q&A 형식</option>
-                <option value="investment">투자 전략 분석</option>
-              </select>
-            </div>
-            
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={e => handleAddTopic(e, false)}
-                disabled={!newTitle || isSubmitting}
-                className="flex-1 py-3 px-4 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-medium rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition"
-              >
-                리스트에 추가
-              </button>
-              <button
-                type="button"
-                onClick={e => handleAddTopic(e, true)}
-                disabled={!newTitle || isSubmitting}
-                className="flex-1 py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-xl shadow-lg hover:shadow-cyan-500/30 transition transform hover:-translate-y-0.5"
-              >
-                🚀 즉시 발행
-              </button>
-            </div>
-          </form>
-        </div>
+      {/* Cookie Status */}
+      <CookieStatusBadge token={token} />
 
-        {/* Global Settings Card */}
-        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            ⚙️ 전역 설정 관리
-          </h2>
-          <form onSubmit={handleSaveSettings} className="space-y-4">
-             <div>
-              <label className="block text-sm font-medium mb-1 opacity-80">결과 알림 수신 이메일 (쉼표로 여러 개 입력)</label>
-              <input
-                type="text"
-                value={settings.recipientEmail || ''}
-                onChange={e => setSettings({...settings, recipientEmail: e.target.value})}
-                placeholder="예: admin@example.com, dev@example.com"
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-80">데일리 크론(Cron) 요약 키워드</label>
-              <input
-                type="text"
-                value={settings.dailyTopic || ''}
-                onChange={e => setSettings({...settings, dailyTopic: e.target.value})}
-                className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
-                placeholder="예: 미국주식, AI, 부동산"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={isSavingSettings}
-              className="w-full py-3 px-4 bg-slate-800 dark:bg-slate-600 text-white font-medium rounded-xl hover:bg-slate-900 dark:hover:bg-slate-500 transition"
-            >
-              {isSavingSettings ? '저장 중...' : '설정 저장하기'}
-            </button>
-          </form>
-        </div>
-
+      {/* Tab Navigation */}
+      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
+        {TAB_CONFIG.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-200 ${
+              activeTab === tab.key
+                ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-white shadow-md'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Right Column: Topic Queue */}
-      <div className="lg:col-span-2">
-        <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl min-h-full">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              📋 발행 대기열 (Queue)
-            </h2>
-            <button onClick={fetchTopics} disabled={isRefreshing} className="text-sm px-3 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition disabled:opacity-50 flex items-center gap-1">
-              <span className={isRefreshing ? 'animate-spin inline-block' : ''}>🔄</span>
-              {isRefreshing ? '새로고침 중...' : '새로고침'}
-            </button>
-          </div>
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
 
-          {topics.length === 0 ? (
-            <div className="text-center py-20 text-slate-500 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
-              대기 중인 주제가 없습니다.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {[...topics].reverse().map(topic => (
-                <div key={topic.id} className="group flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:border-cyan-500 transition-colors">
+        {/* ═══════ TAB: SEO 키워드 발굴 ═══════ */}
+        {activeTab === 'keywords' && (
+          <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl">
+            <KeywordDiscovery token={token} onAddToQueue={handleAddFromKeyword} />
+          </div>
+        )}
+
+        {/* ═══════ TAB: 발행 대기열 ═══════ */}
+        {activeTab === 'queue' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left: Quick Add */}
+            <div className="lg:col-span-1">
+              <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  ✨ 새로운 주제 추가
+                </h2>
+                <form className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 opacity-80">발행할 키워드 또는 기사 제목</label>
+                    <textarea
+                      value={newTitle}
+                      onChange={e => setNewTitle(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none resize-none h-24"
+                      placeholder="예: 미국 연준 금리 인하 기대감 확산"
+                    />
+                  </div>
                   
-                  {editTopicId === topic.id ? (
-                    <div className="flex-1 w-full space-y-3">
-                      <input 
-                        type="text" 
-                        value={editTopicTitle} 
-                        onChange={(e) => setEditTopicTitle(e.target.value)} 
-                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
-                      />
-                      <div className="flex gap-2">
-                        <select 
-                          value={editTopicTemplate} 
-                          onChange={(e) => setEditTopicTemplate(e.target.value)}
-                          className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none"
-                        >
-                          <option value="default">기본 뉴스 분석</option>
-                          <option value="review">제품/서비스 리뷰</option>
-                          <option value="interview">전문가 인터뷰</option>
-                          <option value="qa">Q&A 형식</option>
-                          <option value="investment">투자 전략 분석</option>
-                        </select>
-                        <button 
-                          onClick={() => handleSaveEdit(topic.id)}
-                          className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition"
-                        >
-                          저장
-                        </button>
-                        <button 
-                          onClick={() => setEditTopicId(null)}
-                          className="px-4 py-2 text-slate-500 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition"
-                        >
-                          취소
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[topic.status]}`}>
-                            {STATUS_LABELS[topic.status]}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {new Date(topic.createdAt).toLocaleString('ko-KR')}
-                          </span>
-                        </div>
-                        <h3 className="font-medium text-lg truncate" title={topic.title}>{topic.title}</h3>
-                        <p className="text-sm text-slate-500">템플릿: {topic.template}</p>
-                      </div>
-                      
-                      <div className="flex flex-wrap items-center gap-2 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        {topic.status === 'publishing' || topic.status === 'failed' ? (
-                          <>
-                            <button 
-                              onClick={() => handleResetStatus(topic.id)}
-                              className="px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-                            >
-                              취소 및 초기화
-                            </button>
-                            <button 
-                              onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
-                              className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
-                            >
-                              ▶ 재발행
-                            </button>
-                            {topic.status === 'failed' && (
-                              <button 
-                                onClick={() => handleDeleteTopic(topic.id)}
-                                className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                  <div>
+                    <label className="block text-sm font-medium mb-1 opacity-80">블로그 템플릿</label>
+                    <select
+                      value={newTemplate}
+                      onChange={e => setNewTemplate(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
+                    >
+                      <option value="default">기본 뉴스 분석</option>
+                      <option value="review">제품/서비스 리뷰</option>
+                      <option value="interview">전문가 인터뷰</option>
+                      <option value="qa">Q&A 형식</option>
+                      <option value="investment">투자 전략 분석</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={e => handleAddTopic(e, false)}
+                      disabled={!newTitle || isSubmitting}
+                      className="flex-1 py-3 px-4 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-medium rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+                    >
+                      리스트에 추가
+                    </button>
+                    <button
+                      type="button"
+                      onClick={e => handleAddTopic(e, true)}
+                      disabled={!newTitle || isSubmitting}
+                      className="flex-1 py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-medium rounded-xl shadow-lg hover:shadow-cyan-500/30 transition transform hover:-translate-y-0.5"
+                    >
+                      🚀 즉시 발행
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* Right: Topic Queue */}
+            <div className="lg:col-span-2">
+              <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-xl min-h-full">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    📋 발행 대기열 (Queue)
+                  </h2>
+                  <button onClick={fetchTopics} disabled={isRefreshing} className="text-sm px-3 py-1 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition disabled:opacity-50 flex items-center gap-1">
+                    <span className={isRefreshing ? 'animate-spin inline-block' : ''}>🔄</span>
+                    {isRefreshing ? '새로고침 중...' : '새로고침'}
+                  </button>
+                </div>
+
+                {topics.length === 0 ? (
+                  <div className="text-center py-20 text-slate-500 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                    대기 중인 주제가 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {[...topics].reverse().map(topic => (
+                      <div key={topic.id} className="group flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:border-cyan-500 transition-colors">
+                        
+                        {editTopicId === topic.id ? (
+                          <div className="flex-1 w-full space-y-3">
+                            <input 
+                              type="text" 
+                              value={editTopicTitle} 
+                              onChange={(e) => setEditTopicTitle(e.target.value)} 
+                              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 outline-none"
+                            />
+                            <div className="flex gap-2">
+                              <select 
+                                value={editTopicTemplate} 
+                                onChange={(e) => setEditTopicTemplate(e.target.value)}
+                                className="px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none"
                               >
-                                삭제
+                                <option value="default">기본 뉴스 분석</option>
+                                <option value="review">제품/서비스 리뷰</option>
+                                <option value="interview">전문가 인터뷰</option>
+                                <option value="qa">Q&A 형식</option>
+                                <option value="investment">투자 전략 분석</option>
+                              </select>
+                              <button 
+                                onClick={() => handleSaveEdit(topic.id)}
+                                className="px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition"
+                              >
+                                저장
                               </button>
-                            )}
-                          </>
+                              <button 
+                                onClick={() => setEditTopicId(null)}
+                                className="px-4 py-2 text-slate-500 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
                         ) : (
                           <>
-                            <button 
-                              onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
-                              className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
-                            >
-                              ▶ 발행
-                            </button>
-                            <button 
-                              onClick={() => handleEditStart(topic)}
-                              className="px-3 py-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-800/50 transition"
-                            >
-                              수정
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteTopic(topic.id)}
-                              className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
-                            >
-                              삭제
-                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[topic.status]}`}>
+                                  {STATUS_LABELS[topic.status]}
+                                </span>
+                                {topic.source === 'cron-seo' && (
+                                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 font-semibold">
+                                    🤖 AI 발굴
+                                  </span>
+                                )}
+                                <span className="text-xs text-slate-400">
+                                  {new Date(topic.createdAt).toLocaleString('ko-KR')}
+                                </span>
+                              </div>
+                              <h3 className="font-medium text-lg truncate" title={topic.title}>{topic.title}</h3>
+                              <p className="text-sm text-slate-500">템플릿: {topic.template}</p>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-2 shrink-0 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                              {topic.status === 'publishing' || topic.status === 'failed' ? (
+                                <>
+                                  <button 
+                                    onClick={() => handleResetStatus(topic.id)}
+                                    className="px-3 py-1.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                                  >
+                                    취소 및 초기화
+                                  </button>
+                                  <button 
+                                    onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
+                                    className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
+                                  >
+                                    ▶ 재발행
+                                  </button>
+                                  {topic.status === 'failed' && (
+                                    <button 
+                                      onClick={() => handleDeleteTopic(topic.id)}
+                                      className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                                    >
+                                      삭제
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <button 
+                                    onClick={() => handleTriggerPublish(topic.id, topic.title, topic.template)}
+                                    className="px-3 py-1.5 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-lg font-medium hover:bg-cyan-200 dark:hover:bg-cyan-800/50 transition flex items-center gap-1"
+                                  >
+                                    ▶ 발행
+                                  </button>
+                                  <button 
+                                    onClick={() => handleEditStart(topic)}
+                                    className="px-3 py-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-lg hover:bg-amber-200 dark:hover:bg-amber-800/50 transition"
+                                  >
+                                    수정
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeleteTopic(topic.id)}
+                                    className="px-3 py-1.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-800/50 transition"
+                                  >
+                                    삭제
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </>
                         )}
                       </div>
-                    </>
-                  )}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* ═══════ TAB: 설정 ═══════ */}
+        {activeTab === 'settings' && (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white/60 dark:bg-slate-800/60 backdrop-blur-xl border border-slate-200 dark:border-slate-700 p-8 rounded-2xl shadow-xl">
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+                ⚙️ 전역 설정 관리
+              </h2>
+              <form onSubmit={handleSaveSettings} className="space-y-6">
+                <div>
+                  <label className="block text-sm font-semibold mb-2">결과 알림 수신 이메일</label>
+                  <p className="text-xs text-slate-400 mb-2">쉼표로 여러 개 입력 가능</p>
+                  <input
+                    type="text"
+                    value={settings.recipientEmail || ''}
+                    onChange={e => setSettings({...settings, recipientEmail: e.target.value})}
+                    placeholder="예: admin@example.com, dev@example.com"
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold mb-2">🔍 SEO 시드 키워드 (핵심 설정)</label>
+                  <p className="text-xs text-slate-400 mb-2">
+                    쉼표로 여러 개 입력 · 이 키워드를 기반으로 AI가 매일 트렌딩 롱테일 키워드를 발굴합니다
+                  </p>
+                  <input
+                    type="text"
+                    value={settings.dailyTopic || ''}
+                    onChange={e => setSettings({...settings, dailyTopic: e.target.value})}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
+                    placeholder="예: 미국주식, AI, 부동산, 반도체"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(settings.dailyTopic || '').split(',').filter(s => s.trim()).map((seed, i) => (
+                      <span key={i} className="px-3 py-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-full text-xs font-semibold">
+                        #{seed.trim()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSavingSettings}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-600 dark:to-slate-500 text-white font-medium rounded-xl hover:shadow-lg transition"
+                >
+                  {isSavingSettings ? '저장 중...' : '💾 설정 저장하기'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
       </div>
-      
     </div>
   );
 };
