@@ -15,6 +15,7 @@ const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
   const [data, setData] = useState<CookieStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -31,6 +32,13 @@ const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
       setLoading(false);
     }
   }, [token]);
+
+  const handleRefresh = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchStatus();
+    setRefreshing(false);
+  }, [fetchStatus]);
 
   useEffect(() => {
     fetchStatus();
@@ -130,9 +138,38 @@ const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
             </div>
           </div>
 
-          {/* 토글 화살표 */}
-          <div className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <div className="flex items-center gap-2">
+            {/* 새로고침 버튼 */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="로그인 상태 새로고침"
+              className={`p-1.5 rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={refreshing ? 'animate-spin' : ''}
+                style={{ animationDuration: '0.8s' }}
+              >
+                <path d="M21.5 2v6h-6" />
+                <path d="M2.5 22v-6h6" />
+                <path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8" />
+                <path d="M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16" />
+              </svg>
+            </button>
+
+            {/* 토글 화살표 */}
+            <div className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
           </div>
         </div>
 
