@@ -53,6 +53,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   // Settings Form
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  // AI Seed Recommendation
+  const [recommendedSeeds, setRecommendedSeeds] = useState<any[]>([]);
+  const [selectedSeeds, setSelectedSeeds] = useState<Set<string>>(new Set());
+  const [isLoadingSeeds, setIsLoadingSeeds] = useState(false);
+
   // Edit Topic State
   const [editTopicId, setEditTopicId] = useState<string | null>(null);
   const [editTopicTitle, setEditTopicTitle] = useState('');
@@ -220,6 +225,49 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
     });
     setIsSavingSettings(false);
     alert('설정이 저장되었습니다.');
+  };
+
+  const handleRecommendSeeds = async () => {
+    setIsLoadingSeeds(true);
+    setRecommendedSeeds([]);
+    setSelectedSeeds(new Set());
+    try {
+      const res = await fetch('/api/admin/recommend-seeds', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ currentSeeds: settings.dailyTopic || '' })
+      });
+      if (!res.ok) throw new Error('추천 실패');
+      const data = await res.json();
+      setRecommendedSeeds(data.recommendations || []);
+    } catch (e: any) {
+      alert('시드 추천에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsLoadingSeeds(false);
+    }
+  };
+
+  const toggleSeedSelection = (keyword: string) => {
+    setSelectedSeeds(prev => {
+      const next = new Set(prev);
+      if (next.has(keyword)) next.delete(keyword);
+      else next.add(keyword);
+      return next;
+    });
+  };
+
+  const handleAddSelectedSeeds = () => {
+    if (selectedSeeds.size === 0) return;
+    const currentSeeds = (settings.dailyTopic || '').split(',').map(s => s.trim()).filter(Boolean);
+    const newSeeds = [...selectedSeeds].filter(s => !currentSeeds.includes(s));
+    const merged = [...currentSeeds, ...newSeeds].join(', ');
+    setSettings({ ...settings, dailyTopic: merged });
+    setRecommendedSeeds([]);
+    setSelectedSeeds(new Set());
+    alert(`${newSeeds.length}개의 시드가 추가되었습니다. '설정 저장하기'를 눌러 저장하세요.`);
   };
 
   if (loading) {
@@ -489,6 +537,66 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                       </span>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleRecommendSeeds}
+                    disabled={isLoadingSeeds}
+                    className="mt-3 w-full py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium rounded-xl hover:shadow-lg hover:scale-[1.01] transition-all disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2"
+                  >
+                    {isLoadingSeeds ? (
+                      <><span className="animate-spin">⏳</span> AI가 트렌드를 분석 중...</>
+                    ) : (
+                      <>🤖 AI 시드 추천받기</>
+                    )}
+                  </button>
+
+                  {recommendedSeeds.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold text-purple-600 dark:text-purple-400">🎯 AI 추천 시드 키워드</h4>
+                        <span className="text-xs text-slate-400">{selectedSeeds.size}개 선택됨</span>
+                      </div>
+                      <div className="grid gap-2 max-h-80 overflow-y-auto pr-1">
+                        {recommendedSeeds.map((rec: any, i: number) => (
+                          <label
+                            key={i}
+                            className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                              selectedSeeds.has(rec.keyword)
+                                ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-sm'
+                                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-purple-300'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedSeeds.has(rec.keyword)}
+                              onChange={() => toggleSeedSelection(rec.keyword)}
+                              className="mt-0.5 accent-purple-600 w-4 h-4"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-sm">{rec.keyword}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                  rec.trend === '급상승' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                  : rec.trend === '꾸준히높음' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                }`}>{rec.trend}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">{rec.category}</span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{rec.reason}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddSelectedSeeds}
+                        disabled={selectedSeeds.size === 0}
+                        className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium rounded-xl hover:shadow-lg transition disabled:opacity-40"
+                      >
+                        ✅ 선택한 {selectedSeeds.size}개 시드 추가하기
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="submit"
