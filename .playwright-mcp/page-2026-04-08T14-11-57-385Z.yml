@@ -1,0 +1,17 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 🛠️
+      - heading "AI Blog Admin" [level=1] [ref=e7]
+    - generic [ref=e8]:
+      - link "퍼블릭 화면 가기 →" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - button "🌙" [ref=e10] [cursor=pointer]
+  - main [ref=e11]:
+    - generic [ref=e13]:
+      - heading "🔐 Admin Dashboard" [level=2] [ref=e15]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: 관리자 비밀번호
+          - textbox "••••••••" [active] [ref=e19]
+        - button "로그인" [disabled] [ref=e20]

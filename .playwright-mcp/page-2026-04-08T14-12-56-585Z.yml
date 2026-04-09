@@ -1,0 +1,212 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: 🛠️
+      - heading "AI Blog Admin" [level=1] [ref=e7]
+    - generic [ref=e8]:
+      - link "퍼블릭 화면 가기 →" [ref=e9] [cursor=pointer]:
+        - /url: /
+      - button "🌙" [ref=e10] [cursor=pointer]
+      - button "로그아웃" [ref=e21] [cursor=pointer]
+  - main [ref=e11]:
+    - generic [ref=e22]:
+      - generic [ref=e26] [cursor=pointer]:
+        - generic [ref=e31]:
+          - heading "티스토리 로그인 정상" [level=3] [ref=e32]
+          - paragraph [ref=e33]: "마지막 확인: 12시간 전"
+        - generic [ref=e34]:
+          - button "로그인 상태 새로고침" [ref=e35]:
+            - img [ref=e36]
+          - img [ref=e42]
+      - generic [ref=e44]:
+        - button "🔍 SEO 키워드 발굴" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: 🔍
+          - generic [ref=e47]: SEO 키워드 발굴
+        - button "📋 발행 대기열" [ref=e48] [cursor=pointer]:
+          - generic [ref=e49]: 📋
+          - generic [ref=e50]: 발행 대기열
+        - button "⚙️ 설정" [ref=e51] [cursor=pointer]:
+          - generic [ref=e52]: ⚙️
+          - generic [ref=e53]: 설정
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - heading "🔍 SEO 키워드 발굴소" [level=2] [ref=e59]
+            - paragraph [ref=e60]:
+              - text: AI가 분석한 트렌딩 롱테일 키워드 ·
+              - generic [ref=e61]: 8개 검토 대기
+              - generic [ref=e62]: · 5개 승인됨
+          - button "✨ 지금 발굴하기" [ref=e63] [cursor=pointer]
+        - generic [ref=e64]:
+          - button "전체13" [ref=e65] [cursor=pointer]
+          - button "📥 검토 대기8" [ref=e66] [cursor=pointer]
+          - button "✅ 승인됨5" [ref=e67] [cursor=pointer]
+          - button "🚫 기각" [ref=e68] [cursor=pointer]
+        - generic [ref=e69]:
+          - generic [ref=e71]:
+            - generic [ref=e72]:
+              - generic [ref=e73]: "#탄소중립"
+              - generic [ref=e74]: 🟡 중간
+              - generic [ref=e75]: 비교분석
+              - generic [ref=e76]: 📝 뉴스 분석
+              - generic [ref=e77]: ✅ 발행 대기열 추가됨
+            - 'heading "2026년 중소기업 탄소중립 전환, 정부 지원금 7가지 비교 분석 가이드: 우리 회사에 맞는 정책은?" [level=3] [ref=e78]'
+            - paragraph [ref=e79]: 🎯 2026년 중소기업 탄소중립 지원 정책 비교 분석 및 신청 가이드
+            - paragraph [ref=e80]: 💡 고금리와 탄소중립 규제 이중고 속에서 우리 회사가 받을 수 있는 2026년 최신 정부 지원 정책들을 한눈에 비교하고, 성공적으로 신청하는 방법을 알려드립니다.
+            - button "▼ 상세 보기" [ref=e81] [cursor=pointer]
+          - generic [ref=e84]:
+            - generic [ref=e85]:
+              - generic [ref=e86]: "#탄소중립"
+              - generic [ref=e87]: 🟡 중간
+              - generic [ref=e88]: 방법가이드
+              - generic [ref=e89]: 📝 뉴스 분석
+            - heading "2026년 탄소중립 주택, 비용 낭비 없이 짓는 5가지 핵심 전략과 설계 가이드" [level=3] [ref=e90]
+            - paragraph [ref=e91]: 🎯 2026년 탄소중립 주택 설계 핵심 요소와 비용 효율적인 시공 가이드
+            - paragraph [ref=e92]: 💡 탄소중립 주택 건설이 막연히 비쌀 것이라고 생각하셨나요? 최신 친환경 건축 트렌드 (2026년 지속가능성 트렌드)를 반영하여 비용을 절감하면서도 탄소배출을 최소화하는 실질적인 주택 설계 및 시공 방법을 공개합니다.
+            - button "▼ 상세 보기" [ref=e93] [cursor=pointer]
+            - generic [ref=e94]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e95] [cursor=pointer]
+              - button "기각" [ref=e96] [cursor=pointer]
+              - button "삭제" [ref=e97] [cursor=pointer]
+          - generic [ref=e100]:
+            - generic [ref=e101]:
+              - generic [ref=e102]: "#탄소중립"
+              - generic [ref=e103]: 🟡 중간
+              - generic [ref=e104]: 정보탐색, 방법가이드, 심층해설
+              - generic [ref=e105]: 📝 guide
+            - heading "2026년 기업 탄소중립 전환, 비용 절감 핵심 전략 5가지와 정부 지원금 총정리" [level=3] [ref=e106]
+            - paragraph [ref=e107]: 🎯 2026년 기업 탄소중립 전환 비용 절감 및 정부 지원 전략
+            - paragraph [ref=e108]: 💡 다가오는 2026년 강화되는 탄소규제, 우리 기업은 어떻게 비용을 줄이면서 탄소중립을 달성할 수 있을까요? 최신 정부 지원 사업과 성공 사례를 통해 그 해답을 제시합니다.
+            - button "▼ 상세 보기" [ref=e109] [cursor=pointer]
+            - generic [ref=e110]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e111] [cursor=pointer]
+              - button "기각" [ref=e112] [cursor=pointer]
+              - button "삭제" [ref=e113] [cursor=pointer]
+          - generic [ref=e115]:
+            - generic [ref=e116]:
+              - generic [ref=e117]: "#탄소중립"
+              - generic [ref=e118]: 🟢 경쟁 낮음
+              - generic [ref=e119]: 정보탐색, 방법가이드, 비교분석
+              - generic [ref=e120]: 📝 guide
+              - generic [ref=e121]: ✅ 발행 대기열 추가됨
+            - heading "2026년 전기요금 폭탄 피하는 우리집 절약 꿀팁 7가지 & 최대 480만원 고효율 가전 환급받는 법" [level=3] [ref=e122]
+            - paragraph [ref=e123]: 🎯 2026년 가정용 전기요금 절약 꿀팁과 정부 고효율 가전 환급 가이드
+            - paragraph [ref=e124]: 💡 치솟는 전기요금 걱정되시죠? 2026년 최신 전기요금 절약 노하우와 정부가 지원하는 고효율 가전 환급, 그린리모델링 혜택까지, 우리 집 살림에 보탬이 될 모든 정보를 한 번에 알려드립니다.
+            - button "▼ 상세 보기" [ref=e125] [cursor=pointer]
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - generic [ref=e130]: "#탄소발자국"
+              - generic [ref=e131]: 🟡 중간
+              - generic [ref=e132]: 방법가이드
+              - generic [ref=e133]: 📝 뉴스 분석
+            - heading "2026년, 내 탄소발자국 50% 줄이는 7가지 비법 (정부 지원금 최대 7만원)" [level=3] [ref=e134]
+            - paragraph [ref=e135]: 🎯 2026년 개인 탄소발자국 줄이는 생활 속 실천 가이드 및 혜택
+            - paragraph [ref=e136]: 💡 환경 보호와 동시에 경제적 이득까지 얻을 수 있는 2026년 최신 개인 탄소발자국 저감 방법을 지금 바로 확인하고 실천하세요.
+            - button "▼ 상세 보기" [ref=e137] [cursor=pointer]
+            - generic [ref=e138]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e139] [cursor=pointer]
+              - button "기각" [ref=e140] [cursor=pointer]
+              - button "삭제" [ref=e141] [cursor=pointer]
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]: "#탄소발자국"
+              - generic [ref=e147]: 🟡 중간
+              - generic [ref=e148]: 심층해설
+              - generic [ref=e149]: 📝 뉴스 분석
+            - heading "2026년 CBAM 리스크 최소화! 수출 기업이 반드시 알아야 할 탄소발자국 관리 5단계 전략" [level=3] [ref=e150]
+            - paragraph [ref=e151]: "🎯 2026년 CBAM 본격 시행: 수출 기업을 위한 탄소발자국 관리 전략 심층 분석"
+            - paragraph [ref=e152]: 💡 유럽연합 탄소국경조정제도(CBAM)가 2026년부터 본격 시행됨에 따라, 우리 기업의 경쟁력 유지를 위한 핵심 탄소발자국 관리 전략과 정부 지원 방안을 상세히 파헤칩니다.
+            - button "▼ 상세 보기" [ref=e153] [cursor=pointer]
+            - generic [ref=e154]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e155] [cursor=pointer]
+              - button "기각" [ref=e156] [cursor=pointer]
+              - button "삭제" [ref=e157] [cursor=pointer]
+          - generic [ref=e160]:
+            - generic [ref=e161]:
+              - generic [ref=e162]: "#탄소중립"
+              - generic [ref=e163]: 🟡 중간
+              - generic [ref=e164]: 정보탐색, 방법가이드, 트렌드분석
+              - generic [ref=e165]: 📝 뉴스 분석
+            - heading "국내 1호 구미 탄소중립 산단 대변신! 입주 기업이 알아야 할 5가지 핵심 전략" [level=3] [ref=e166]
+            - paragraph [ref=e167]: 🎯 구미국가산단 탄소중립 전환 사례 분석 및 입주 기업 대응 전략
+            - paragraph [ref=e168]: 💡 2026년 4월, 경북 구미국가산업단지가 국내 최초 탄소중립 산단으로 탈바꿈합니다. 우리 기업의 경쟁력을 높일 에너지 전환 기회를 놓치지 마세요.
+            - button "▼ 상세 보기" [ref=e169] [cursor=pointer]
+            - generic [ref=e170]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e171] [cursor=pointer]
+              - button "기각" [ref=e172] [cursor=pointer]
+              - button "삭제" [ref=e173] [cursor=pointer]
+          - generic [ref=e176]:
+            - generic [ref=e177]:
+              - generic [ref=e178]: "#탄소중립"
+              - generic [ref=e179]: 🟡 중간
+              - generic [ref=e180]: 정보탐색, 방법가이드, 심층해설
+              - generic [ref=e181]: 📝 뉴스 분석
+            - heading "2026년 CBAM 비상! 국내 중소기업을 위한 공급망 탄소 데이터 검증 A to Z" [level=3] [ref=e182]
+            - paragraph [ref=e183]: 🎯 2026년 EU CBAM 시행 대비 국내 중소기업 공급망 탄소 데이터 검증 가이드
+            - paragraph [ref=e184]: 💡 EU 탄소국경세(CBAM) 본격 시행이 코앞으로 다가왔습니다. 우리 기업의 수출 경쟁력을 지킬 공급망 탄소 데이터 검증, 지금 바로 시작해야 합니다.
+            - button "▼ 상세 보기" [ref=e185] [cursor=pointer]
+            - generic [ref=e186]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e187] [cursor=pointer]
+              - button "기각" [ref=e188] [cursor=pointer]
+              - button "삭제" [ref=e189] [cursor=pointer]
+          - generic [ref=e192]:
+            - generic [ref=e193]:
+              - generic [ref=e194]: "#탄소발자국"
+              - generic [ref=e195]: 🟡 중간
+              - generic [ref=e196]: 방법가이드
+              - generic [ref=e197]: 📝 뉴스 분석
+            - heading "2026년 유럽 CBAM 완전 시행! 한국 기업을 위한 탄소 데이터 관리 5단계 완벽 가이드" [level=3] [ref=e198]
+            - paragraph [ref=e199]: 🎯 2026년 EU CBAM 대비 한국 기업 탄소 데이터 관리 및 공시 가이드
+            - paragraph [ref=e200]: 💡 강화된 EU 탄소 규제, 더 이상 미룰 수 없습니다. 2026년부터 적용될 CBAM에 완벽하게 대비할 실질적인 탄소 데이터 관리 및 공시 전략을 지금 바로 확인하세요.
+            - button "▼ 상세 보기" [ref=e201] [cursor=pointer]
+            - generic [ref=e202]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e203] [cursor=pointer]
+              - button "기각" [ref=e204] [cursor=pointer]
+              - button "삭제" [ref=e205] [cursor=pointer]
+          - generic [ref=e208]:
+            - generic [ref=e209]:
+              - generic [ref=e210]: "#탄소발자국"
+              - generic [ref=e211]: 🟢 경쟁 낮음
+              - generic [ref=e212]: 방법가이드
+              - generic [ref=e213]: 📝 뉴스 분석
+            - heading "하루 10분 투자로 탄소발자국 50% 줄이는 법 | 친환경 식단부터 스마트폰 사용까지 완전 분석" [level=3] [ref=e214]
+            - paragraph [ref=e215]: 🎯 일상생활 탄소발자국 줄이는 효과적인 친환경 식단 및 디지털 습관
+            - paragraph [ref=e216]: 💡 환경 보호가 어렵다고요? 오늘부터 실천할 수 있는 쉽고 재미있는 친환경 식단과 디지털 습관으로 당신의 탄소발자국을 절반으로 줄여보세요.
+            - button "▼ 상세 보기" [ref=e217] [cursor=pointer]
+            - generic [ref=e218]:
+              - button "🚀 승인 & 발행 큐 추가" [ref=e219] [cursor=pointer]
+              - button "기각" [ref=e220] [cursor=pointer]
+              - button "삭제" [ref=e221] [cursor=pointer]
+          - generic [ref=e223]:
+            - generic [ref=e224]:
+              - generic [ref=e225]: "#CBAM"
+              - generic [ref=e226]: 🟡 중간
+              - generic [ref=e227]: 트렌드분석
+              - generic [ref=e228]: 📝 analysis
+              - generic [ref=e229]: ✅ 발행 대기열 추가됨
+            - heading "CBAM, 세탁기·자동차 부품까지? 2026년 이후 적용 품목 확대 전망과 5가지 기업 전략" [level=3] [ref=e230]
+            - paragraph [ref=e231]: 🎯 CBAM 적용 품목 확대 전망 및 완제품 수출 기업 대응 전략
+            - paragraph [ref=e232]: 💡 EU CBAM이 기존 6개 품목을 넘어 완제품까지 확대될 가능성이 커지면서, 우리 기업들은 지금부터 어떻게 대비해야 할까요? 최신 동향과 실질적 전략을 심층 분석합니다.
+            - button "▼ 상세 보기" [ref=e233] [cursor=pointer]
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - generic [ref=e237]: "#미국이란전쟁"
+              - generic [ref=e238]: 🟡 중간
+              - generic [ref=e239]: 심층해설
+              - generic [ref=e240]: 📝 투자 분석
+              - generic [ref=e241]: ✅ 발행 대기열 추가됨
+            - 'heading "2026 미국-이란 전쟁 장기화: 국제 유가 110달러 돌파, 당신의 투자 전략 5가지" [level=3] [ref=e242]'
+            - paragraph [ref=e243]: 🎯 미국 이란 전쟁 장기화 시 국제 유가 및 해상 물류 영향 분석
+            - paragraph [ref=e244]: 💡 중동 전쟁 장기화로 국제 유가가 급등하고 해상 물류가 마비되는 혼돈 속, 불안정한 시장에서 살아남을 핵심 투자 전략을 공개합니다.
+            - button "▼ 상세 보기" [ref=e245] [cursor=pointer]
+          - generic [ref=e247]:
+            - generic [ref=e248]:
+              - generic [ref=e249]: "#미국이란전쟁"
+              - generic [ref=e250]: 🟡 중간
+              - generic [ref=e251]: 심층해설
+              - generic [ref=e252]: 📝 뉴스 분석
+              - generic [ref=e253]: ✅ 발행 대기열 추가됨
+            - 'heading "미국-이란 전쟁 5가지 시나리오 분석: 당신이 놓치지 말아야 할 2026년 세계 안보 변화" [level=3] [ref=e254]'
+            - paragraph [ref=e255]: 🎯 2026 미국-이란 충돌 시나리오별 세계 안보 및 경제 파급 효과
+            - paragraph [ref=e256]: 💡 단순한 전쟁이 아닌 세계 안보 질서의 재편을 가져올 미국-이란 충돌, 전문가들이 예측하는 시나리오별 파급 효과와 당신의 대응 전략을 알아봅니다.
+            - button "▼ 상세 보기" [ref=e257] [cursor=pointer]

@@ -28,7 +28,7 @@ Return ONLY the optimized English search phrases, one per line, no numbering:
 ${keywords.join('\n')}`;
 
         const response = await aiModel.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
 

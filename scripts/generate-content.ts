@@ -88,7 +88,7 @@ async function fetchAndInjectImages(post: string): Promise<string> {
     const analysisPrompt = `${imagePlacementInstructions}\n\n---\n\n다음 블로그 글을 분석하고 이미지 배치 정보를 생성하세요:\n\n${post}`;
 
     const analysisResult = await genAI.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
     });
 
@@ -216,7 +216,7 @@ ${catList}
 
   try {
     const result = await genAI.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
     });
     const num = parseInt((result.text || "8").trim());
@@ -271,7 +271,7 @@ async function main() {
   while (attempt <= maxRetries) {
     try {
       result = await genAI.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
         config: {
           tools: [{ googleSearch: {} }],

@@ -65,7 +65,7 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
     while (attempt <= maxRetries) {
       try {
         result = await (genAI as any).models.generateContent({
-          model: "gemini-2.0-flash",
+          model: "gemini-2.5-flash",
           contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
           config: {
             tools: [{ googleSearch: {} }],
@@ -214,7 +214,7 @@ export async function fetchAndInjectImages(post: string, imageKeywords: string[]
     `;
 
     const analysisResult = await (genAI as any).models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
     });
 
