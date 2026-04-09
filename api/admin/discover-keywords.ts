@@ -31,49 +31,61 @@ function delay(ms: number): Promise<void> {
 async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredKeyword[]> {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  const prompt = `
-You are a veteran SEO strategist with 30 years of blogging experience and 1M+ subscribers.
-Today is ${today}.
+  // [Step 1] 팩트 체커 (구글 검색 전용)
+  const factPrompt = \`명심해라. 오늘은 \${today} 이다. 너의 과거 기억은 틀렸을 확률이 높다.
+임무: 당신은 팩트체크 전문 AI입니다. 제공된 주제 "\${seed}"에 대해 구글 검색 툴을 사용하여 가장 최신의 검증된 사실(현재 시점 기준)만 조사하십시오.
 
-TASK: Analyze trending topics related to this single seed keyword: "${seed}"
-Find SEO-optimized blog keyword opportunities that meet ALL these criteria:
-1. Currently trending or gaining interest in the last 24 hours
-2. Information-seeking (정보탐색형) long-tail keywords, NOT celebrity gossip or weather
-3. Low to medium competition — specific enough that major news outlets haven't covered thoroughly
-4. Can be turned into a useful "guide", "analysis", or "comparison" blog post
-5. Have potential for high dwell time (체류시간)
+검색 및 요약 기준:
+1. 이 주제와 관련해 최근 6~12개월 사이에 새롭게 바뀐 사실, 최신 발표, 일정 변경, 최신 트렌드, 또는 대중의 주요 이슈가 있는지 검색하세요.
+2. 당신의 과거 학습 데이터(기억)에 의존하지 마십시오. 오직 검색 결과에서 확인된 내용만 요약해야 합니다.
+3. 분야에 상관없이 최신 핵심 정보 3~5가지를 한글 불릿 포인트(Bullet point)로 요약하세요.
+4. 검색 결과가 명확하지 않거나 최신 정보가 없다면, "최신 변동 사항 없음"이라고 솔직하게 명시하세요.\`;
 
-Produce exactly 2 keyword sets for the seed "${seed}".
+  console.log(\`  → [Step 1] Fact checking "\${seed}"...\`);
+  const factResponse = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: factPrompt,
+    config: { tools: [{ googleSearch: {} }] },
+  });
+  
+  const factText = factResponse.text || "최신 정보 없음";
+
+  // [Step 2] SEO 기획자 (JSON 포맷팅 전용)
+  const generatePrompt = \`오늘은 \${today} 입니다. 당신은 30년 경력의 베테랑 SEO 전략가입니다.
+아래 제공된 [최신 팩트체크 결과]만을 절대적인 진리로 삼아, "\${seed}" 주제의 SEO 최적화 블로그 키워드 기회를 딱 2개 발굴하세요. 절대 너의 과거 기억(환각)을 섞어 쓰지 마세요.
+
+[최신 팩트체크 결과]
+\${factText}
+
+발굴 기준:
+1. 위 팩트체크 결과를 철저히 반영하여 현재 시점에 가장 유효한 키워드와 정보를 뽑을 것.
+2. 경쟁도가 낮고 구체적인 롱테일 정보탐색형(Information-seeking) 키워드일 것.
+3. 체류시간(Dwell time)이 높을 수 있는 구체적이고 실용적인 가이드, 분석, 비교 형식을 띌 것.
 
 STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 [
   {
-    "seed": "${seed}",
+    "seed": "\${seed}",
     "mainKeyword": "SEO-optimized main keyword in Korean (long-tail, 10+ chars)",
     "subKeywords": ["sub keyword 1", "sub keyword 2", "sub keyword 3"],
-    "suggestedTitle": "Click-worthy blog title in Korean with numbers or specific value proposition",
+    "suggestedTitle": "Click-worthy blog title in Korean matching the verified facts",
     "hookSummary": "One-sentence hook that makes the reader NEED to click (Korean)",
     "searchIntent": "one of: 정보탐색, 비교분석, 방법가이드, 트렌드분석, 심층해설",
     "difficulty": "one of: low, medium, high",
     "template": "one of: default, review, interview, qa, investment",
-    "reasoning": "One sentence explaining WHY this keyword is a good opportunity right now (Korean)"
+    "reasoning": "One sentence explaining WHY this keyword is good based strictly on the facts (Korean)"
   }
 ]
 
 IMPORTANT:
-- Output ONLY valid JSON array. No markdown, no explanation, no code fences.
+- Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
 - All text content must be in Korean.
-- mainKeyword should be a natural search query (e.g. "엔비디아 실적 발표가 국내 AI 반도체주에 미치는 영향")
-- suggestedTitle must be compelling (e.g. "2026년 엔비디아 실적 발표 핵심 요약 | 국내 투자자가 알아야 할 3가지")
-- Avoid generic broad keywords. Be specific and actionable.
-`;
+- suggestedTitle must be compelling and FACTUAL based on the facts provided.\`;
 
+  console.log(\`  → [Step 2] Generating JSON for "\${seed}"...\`);
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: prompt,
-    config: {
-      tools: [{ googleSearch: {} }],
-    },
+    contents: generatePrompt,
   });
 
   const text = response.text || "";
