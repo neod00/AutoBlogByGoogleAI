@@ -27,6 +27,24 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 3) {
+  let attempt = 0;
+  while (attempt <= maxRetries) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (e: any) {
+      attempt++;
+      const isRetryable = e.message?.includes("429") || e.message?.includes("503") || e.message?.includes("UNAVAILABLE");
+      if (attempt > maxRetries || !isRetryable) {
+        throw e;
+      }
+      const waitTime = Math.pow(2, attempt) * 2000;
+      console.warn(`[API Retry] Temporary issue (429/503). Retrying in ${waitTime}ms... (Attempt ${attempt}/${maxRetries})`);
+      await delay(waitTime);
+    }
+  }
+}
+
 // 단일 시드로 키워드 2개 발굴
 async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredKeyword[]> {
   const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -42,7 +60,7 @@ async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredK
 4. 검색 결과가 명확하지 않거나 최신 정보가 없다면, "최신 변동 사항 없음"이라고 솔직하게 명시하세요.`;
 
   console.log(`  → [Step 1] Fact checking "${seed}"...`);
-  const factResponse = await ai.models.generateContent({
+  const factResponse = await generateContentWithRetry(ai, {
     model: 'gemini-2.5-flash',
     contents: factPrompt,
     config: { tools: [{ googleSearch: {} }] },
@@ -86,7 +104,7 @@ IMPORTANT:
   ❌ 연도를 넣지 말아야 하는 경우: 개념 설명, 원리 해설, 일반적인 방법론 가이드 등 시간에 구애받지 않는 에버그린(Evergreen) 콘텐츠`;
 
   console.log(`  → [Step 2] Generating JSON for "${seed}"...`);
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithRetry(ai, {
     model: 'gemini-2.5-flash',
     contents: generatePrompt,
   });

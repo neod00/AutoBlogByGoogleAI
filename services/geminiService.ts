@@ -75,8 +75,9 @@ export async function generateBlogPost(keyword: string, dateRange: string, templ
         break; // Success, exit loop
       } catch (e: any) {
         attempt++;
-        if (attempt > maxRetries || !e.message?.includes("429")) {
-          throw e; // Not a rate limit error or max retries reached
+        const isRetryable = e.message?.includes("429") || e.message?.includes("503") || e.message?.includes("UNAVAILABLE");
+        if (attempt > maxRetries || !isRetryable) {
+          throw e; // Not a retryable error or max retries reached
         }
         const delay = Math.pow(2, attempt) * 2000; // Exponential backoff: 2s, 4s, 8s
         console.warn(`Rate limit hit. Retrying in ${delay}ms... (Attempt ${attempt}/${maxRetries})`);
