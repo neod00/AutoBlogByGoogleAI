@@ -80,7 +80,10 @@ STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 IMPORTANT:
 - Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
 - All text content must be in Korean.
-- suggestedTitle must be compelling and FACTUAL based on the facts provided.`;
+- suggestedTitle must be compelling and FACTUAL based on the facts provided.
+- 제목에 연도(예: 2026년)를 넣을지 여부는 글의 성격에 따라 판단하세요:
+  ✅ 연도를 넣어야 하는 경우: 정책/법률 변경, 연간 트렌드 전망, 시즌별 제품 비교 등 시의성이 핵심인 글
+  ❌ 연도를 넣지 말아야 하는 경우: 개념 설명, 원리 해설, 일반적인 방법론 가이드 등 시간에 구애받지 않는 에버그린(Evergreen) 콘텐츠`;
 
   console.log(`  → [Step 2] Generating JSON for "${seed}"...`);
   const response = await ai.models.generateContent({
