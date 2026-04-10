@@ -12,6 +12,7 @@
     "@google/genai": "^1.29.0",
     "@types/nodemailer": "^7.0.4",
     "@upstash/redis": "^1.37.0",
+    "fast-xml-parser": "^5.5.11",
     "nodemailer": "^7.0.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

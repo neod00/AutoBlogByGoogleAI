@@ -13,6 +13,7 @@ import { resolve } from "path";
 
 // ── Gemini API ──────────────────────────────────────────────
 import { GoogleGenAI } from "@google/genai";
+import { XMLParser } from "fast-xml-parser";
 
 const API_KEY = process.env.GEMINI_API_KEY || "";
 if (!API_KEY) {
@@ -226,6 +227,39 @@ ${catList}
   }
 }
 
+// ── RSS related posts ──────────────────────────────────────────────
+async function fetchRelatedPosts(category: string): Promise<{title: string, link: string}[]> {
+  try {
+    console.error("[generate] Fetching RSS feed for related posts...");
+    const res = await fetch("https://climate-insight.tistory.com/rss");
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const parser = new XMLParser({ 
+      processEntities: false, 
+      ignoreDeclaration: true,
+      stopNodes: ["rss.channel.item.description", "rss.channel.item.content:encoded"]
+    });
+    const obj = parser.parse(xml);
+    const items = obj.rss?.channel?.item || [];
+    
+    // items can be array or object if only 1 item
+    const arr = Array.isArray(items) ? items : [items];
+    if (arr.length === 0) return [];
+    
+    // Sort logic: pick items containing same category keywords, fallback to recent
+    // For simplicity, here we just pick the latest 3 items as related internal links
+    const topItems = arr.slice(0, 3).map((i: any) => ({
+      title: i.title || "",
+      link: i.link || ""
+    }));
+
+    return topItems;
+  } catch (error) {
+    console.error("[generate] RSS fetch failed:", error);
+    return [];
+  }
+}
+
 // ── Main generation ─────────────────────────────────────────
 async function main() {
   const topic = process.argv[2];
@@ -316,7 +350,9 @@ async function main() {
     : [];
 
   if (sourceTitles.length > 0 || groundingUrls.length > 0) {
-    let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;"><h2 style="font-size:1.5rem;margin-bottom:1rem;">📚 참고 자료</h2><ul style="list-style:disc;padding-left:1.5rem;">';
+    let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;">';
+    refHtml += '<details style="cursor:pointer;"><summary style="font-size:1.1rem;font-weight:bold;color:#475569;">📚 본문 출처 및 참고자료 (클릭하여 펼치기)</summary>';
+    refHtml += '<ul style="list-style:disc;padding-left:1.5rem;margin-top:1rem;font-size:0.9rem;color:#64748b;">';
     const usedUrls = new Set<string>();
 
     for (const st of sourceTitles) {
@@ -329,11 +365,11 @@ async function main() {
         }
       }
       refHtml += matchedUrl
-        ? `<li style="margin-bottom:0.5rem;"><a href="${matchedUrl}" target="_blank" rel="noopener" style="color:#06b6d4;text-decoration:underline;">${st}</a></li>`
+        ? `<li style="margin-bottom:0.5rem;"><a href="${matchedUrl}" target="_blank" rel="noopener" style="color:#0ea5e9;text-decoration:underline;">${st}</a></li>`
         : `<li style="margin-bottom:0.5rem;">${st}</li>`;
     }
 
-    refHtml += "</ul></div>";
+    refHtml += "</ul></details></div>";
     post += refHtml;
   }
 
@@ -345,6 +381,25 @@ async function main() {
   console.error("[generate] Classifying category...");
   const category = await classifyCategory(title, post);
   console.error(`[generate] Category: ${category}`);
+
+  // ── Inject related internal links (CTA) ──
+  const relatedPosts = await fetchRelatedPosts(category);
+  if (relatedPosts.length > 0) {
+    console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
+    let ctaHtml = `
+<div style="margin: 3rem 0; padding: 1.5rem; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+  <h3 style="margin-top: 0; color: #166534; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bbf7d0; padding-bottom: 0.5rem; margin-bottom: 1rem;">🌟 이 블로그의 다른 핵심 인사이트 보러가기</h3>
+  <ul style="list-style-type: none; padding-left: 0; margin: 0;">`;
+    
+    for (const p of relatedPosts) {
+      ctaHtml += `<li style="margin-bottom: 0.75rem; display: flex; align-items: center;"><span style="margin-right: 8px;">👉</span> <a href="${p.link}" target="_blank" rel="noopener" style="color: #0369a1; text-decoration: none; font-weight: 500; font-size: 1.05rem;">${p.title}</a></li>`;
+    }
+
+    ctaHtml += `
+  </ul>
+</div>`;
+    post += ctaHtml;
+  }
 
   // ── Output JSON ──
   const output = { title, html: post, tags, category };
