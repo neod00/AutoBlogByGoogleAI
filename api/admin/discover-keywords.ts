@@ -99,9 +99,11 @@ IMPORTANT:
 - Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
 - All text content must be in Korean.
 - suggestedTitle must be compelling and FACTUAL based on the facts provided.
-- 제목에 연도(예: 2026년)를 넣을지 여부는 글의 성격에 따라 판단하세요:
-  ✅ 연도를 넣어야 하는 경우: 정책/법률 변경, 연간 트렌드 전망, 시즌별 제품 비교 등 시의성이 핵심인 글
-  ❌ 연도를 넣지 말아야 하는 경우: 개념 설명, 원리 해설, 일반적인 방법론 가이드 등 시간에 구애받지 않는 에버그린(Evergreen) 콘텐츠`;
+- ⭐️ TITLE GENERATION RULES (100만 블로거의 실전 매뉴얼) ⭐️
+  1. [연도 사용 제한]: 제목에 현재 연도(예: 2026년)를 강박적으로 넣지 마세요. 무조건 시의성이 핵심인 최신 트렌드/이슈 글에만 매우 제한적으로 사용하세요. (전체의 20% 미만)
+  2. [Value-First 훅]: "연도"나 "키워드"보다 독자가 얻을 이득(Benefit)이나 호기심/공감(Pain-point)을 제목 가장 앞부분에 배치하세요.
+     (Bad 예시: "2026 기후주간 프로그램 5가지" -> Good 예시: "주말에 아이와 여수 간다면? 기후주간 필수 코스 5")
+  3. [포맷 다양화]: 리스트형("~가지"), 질문형("~일까?"), 노하우형("~하는 법"), 주의/경고형("~하기 전 필수 확인") 등 다양한 형태의 제목을 제안하세요. 천편일률적인 패턴을 피하세요.`;
 
   console.log(`  → [Step 2] Generating JSON for "${seed}"...`);
   const response = await generateContentWithRetry(ai, {
