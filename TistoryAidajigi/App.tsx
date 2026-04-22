@@ -1,4 +1,4 @@
-﻿import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { generateBlogPost, fetchAndInjectImages } from './services/geminiService';
 import BlogPostDisplay from './components/BlogPostDisplay';
 import ImageKeywordEditor from './components/ImageKeywordEditor';
@@ -212,8 +212,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 flex flex-col p-4 md:p-8 transition-colors duration-300">
       <header className="w-full max-w-5xl mx-auto text-center mb-8 relative">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">aidajigi AI 전문 블로그 생성기</h1>
-        <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">최신 인공지능 트렌드와 기술 분석을 위한 자동화 시스템</p>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">뉴스 기반 블로그 포스트 생성기</h1>
+        <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">Gemini AI를 사용하여 최신 뉴스로 블로그 글 자동 생성</p>
         <button
           onClick={toggleTheme}
           className="absolute top-0 right-0 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -238,7 +238,7 @@ const App: React.FC = () => {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleGenerateClick()}
-            placeholder="블로그 글의 주제가 될 키워드를 입력하세요 (예: LLM 트렌드)"
+            placeholder="블로그 글의 주제가 될 키워드를 입력하세요 (예: AI 반도체)"
             className="flex-grow bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
             disabled={isLoading}
           />

@@ -9,7 +9,7 @@ const AdminApp: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('dark');
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  // 초기 ?�마 ?�정
+  // 초기 테마 설정
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as Theme | null;
     const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -26,11 +26,11 @@ const AdminApp: React.FC = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // ?�션(?�큰) ?�인
+  // 세션(토큰) 확인
   useEffect(() => {
     const savedToken = localStorage.getItem('adminToken');
     if (savedToken) {
-      // ?�버�??�해 ?�효??검�??�도
+      // 서버를 통해 유효성 검증 시도
       fetch('/api/admin/auth', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${savedToken}` }
@@ -75,25 +75,25 @@ const AdminApp: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 font-sans">
       <header className="fixed top-0 w-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-50 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <span className="text-xl">?���?/span>
+          <span className="text-xl">🛠️</span>
           <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-500 to-blue-500">
             AI Blog Admin
           </h1>
         </div>
         <div className="flex items-center gap-4">
-          <a href="/" className="text-sm text-slate-500 hover:text-cyan-500 transition">?�블�??�면 가�???/a>
+          <a href="/" className="text-sm text-slate-500 hover:text-cyan-500 transition">퍼블릭 화면 가기 →</a>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition"
           >
-            {theme === 'light' ? '?��' : '?��?}
+            {theme === 'light' ? '🌙' : '☀️'}
           </button>
           {token && (
             <button
               onClick={handleLogout}
               className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              로그?�웃
+              로그아웃
             </button>
           )}
         </div>
@@ -111,4 +111,3 @@ const AdminApp: React.FC = () => {
 };
 
 export default AdminApp;
-
