@@ -1,4 +1,4 @@
-import { redis, isAuthenticated } from '../_lib/redis.ts';
+﻿import { redis, isAuthenticated } from '../_lib/redis.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -25,14 +25,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // Redis?�서 관리자 ?�정(?�메???? ?�어?�기
+    // Redis?먯꽌 愿由ъ옄 ?ㅼ젙(?대찓???? ?쎌뼱?ㅺ린
     let recipientEmail = '';
     const settings = await redis.get<any>('admin:settings');
     if (settings && settings.recipientEmail) {
       recipientEmail = settings.recipientEmail;
     }
 
-    // 1. ?�리�?GitHub Actions
+    // 1. ?몃━嫄?GitHub Actions
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
       {
@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
           client_payload: {
             topic: topic,
             template: template,
-            publish_id: id || '', // 추후 ?�훅?�로 ?�공 ?�료 처리 ???�용 가??            recipientEmail: recipientEmail,
+            publish_id: id || '', // 異뷀썑 ?뱁썒?쇰줈 ?깃났 ?꾨즺 泥섎━ ???ъ슜 媛??            recipientEmail: recipientEmail,
           },
         }),
       }
@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
         return res.status(500).json({ error: "Failed to trigger GitHub Actions", detail: errorBody });
     }
 
-    // 2. 만약 DB(KV)???�는 주제?�?�면 ?�태�?"publishing"?�로 ?�데?�트
+    // 2. 留뚯빟 DB(KV)???덈뒗 二쇱젣??ㅻ㈃ ?곹깭瑜?"publishing"?쇰줈 ?낅뜲?댄듃
     if (id) {
         const key = 'admin:topics_queue';
         let topics = await redis.get<any[]>(key) || [];
@@ -77,4 +77,5 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: error.message });
   }
 }
+
 

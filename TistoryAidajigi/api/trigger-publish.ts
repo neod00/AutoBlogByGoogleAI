@@ -1,18 +1,18 @@
-/**
+﻿/**
  * /api/trigger-publish.ts
  * =======================
- * ?�메??링크 ?�릭 ??GitHub Actions repository_dispatch ?�리�? *
- * GET /api/trigger-publish?topic=주제&secret=xxx
+ * ?대찓??留곹겕 ?대┃ ??GitHub Actions repository_dispatch ?몃━嫄? *
+ * GET /api/trigger-publish?topic=二쇱젣&secret=xxx
  *
- * ?�요???�경변??
- * - CRON_SECRET: ?�증 ?�크�? * - GITHUB_TOKEN: GitHub Personal Access Token (repo scope)
+ * ?꾩슂???섍꼍蹂??
+ * - CRON_SECRET: ?몄쬆 ?쒗겕由? * - GITHUB_TOKEN: GitHub Personal Access Token (repo scope)
  * - GITHUB_REPO: owner/repo (?? username/AutoBlogByGoogleAI)
  */
 
 export default async function handler(req: any, res: any) {
   const { topic, template = "review", secret } = req.query;
 
-  // ?�증 ?�인
+  // ?몄쬆 ?뺤씤
   const CRON_SECRET = process.env.CRON_SECRET;
   if (!CRON_SECRET || secret !== CRON_SECRET) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -30,7 +30,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { redis } = require('./_lib/redis.ts');
+    const { redis } = require('./_lib/redis.js');
     let recipientEmail = '';
     try {
       const settings = await redis.get('admin:settings');
@@ -41,7 +41,7 @@ export default async function handler(req: any, res: any) {
       console.error(e);
     }
 
-    // GitHub repository_dispatch ?�벤???�송
+    // GitHub repository_dispatch ?대깽???꾩넚
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/dispatches`,
       {
@@ -63,14 +63,14 @@ export default async function handler(req: any, res: any) {
     );
 
     if (response.status === 204) {
-      // ?�공 ???�용?�에�??�인 ?�이지 ?�송
+      // ?깃났 ???ъ슜?먯뿉寃??뺤씤 ?섏씠吏 ?꾩넚
       return res.status(200).send(`
         <!DOCTYPE html>
         <html lang="ko">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>블로�??�동 발행 ?�작</title>
+          <title>釉붾줈洹??먮룞 諛쒗뻾 ?쒖옉</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body {
@@ -109,11 +109,11 @@ export default async function handler(req: any, res: any) {
         <body>
           <div class="card">
             <div class="emoji">??</div>
-            <h1>?�동 발행???�작?�었?�니??</h1>
+            <h1>?먮룞 諛쒗뻾???쒖옉?섏뿀?듬땲??</h1>
             <div class="topic">${decodeURIComponent(topic as string)}</div>
-            <p>AI가 블로�?글???�성?�고 ?�스?�리??발행?�니??<br>
-               ?�료?�면 ?�메?�로 결과�??�려?�립?�다.</p>
-            <p class="note">보통 3~5�??�도 ?�요?�니??</p>
+            <p>AI媛 釉붾줈洹?湲???앹꽦?섍퀬 ?곗뒪?좊━??諛쒗뻾?⑸땲??<br>
+               ?꾨즺?섎㈃ ?대찓?쇰줈 寃곌낵瑜??뚮젮?쒕┰?덈떎.</p>
+            <p class="note">蹂댄넻 3~5遺??뺣룄 ?뚯슂?⑸땲??</p>
           </div>
         </body>
         </html>
@@ -132,4 +132,5 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: error.message });
   }
 }
+
 

@@ -1,4 +1,4 @@
-import { isAuthenticated } from '../_lib/redis.ts';
+﻿import { isAuthenticated } from '../_lib/redis.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') {
@@ -16,4 +16,5 @@ export default async function handler(req: any, res: any) {
     return res.status(401).json({ error: 'Invalid password' });
   }
 }
+
 

@@ -1,4 +1,4 @@
-import { redis, isAuthenticated } from '../_lib/redis.ts';
+﻿import { redis, isAuthenticated } from '../_lib/redis.js';
 
 const KV_KEY = 'admin:cookie_status';
 
@@ -24,14 +24,14 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    // GET: 쿠키 ?�태 조회
+    // GET: 荑좏궎 ?곹깭 議고쉶
     if (req.method === 'GET') {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       const data = await redis.get<CookieStatus>(KV_KEY) || DEFAULT_STATUS;
       return res.status(200).json({ cookieStatus: data });
     }
 
-    // POST: 쿠키 ?�태 ?�데?�트 (GitHub Actions?�서 ?�출)
+    // POST: 荑좏궎 ?곹깭 ?낅뜲?댄듃 (GitHub Actions?먯꽌 ?몄텧)
     if (req.method === 'POST') {
       const { status, error } = req.body || {};
 
@@ -59,4 +59,5 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: err.message });
   }
 }
+
 

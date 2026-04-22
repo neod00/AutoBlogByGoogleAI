@@ -1,4 +1,4 @@
-import { isAuthenticated } from '../_lib/redis.ts';
+﻿import { isAuthenticated } from '../_lib/redis.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -47,4 +47,5 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: error.message });
   }
 }
+
 

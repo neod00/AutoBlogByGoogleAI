@@ -1,4 +1,4 @@
-import { redis, isAuthenticated } from '../_lib/redis.ts';
+﻿import { redis, isAuthenticated } from '../_lib/redis.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -10,14 +10,14 @@ export default async function handler(req: any, res: any) {
   const key = 'admin:topics_queue';
 
   try {
-    // GET: 주제 목록 조회
+    // GET: 二쇱젣 紐⑸줉 議고쉶
     if (req.method === 'GET') {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       const topics = await redis.get<any[]>(key);
       return res.status(200).json({ topics: topics || [] });
     }
 
-    // POST: ??주제 추�?
+    // POST: ??二쇱젣 異붽?
     if (req.method === 'POST') {
       const { title, template = 'review' } = req.body || {};
       if (!title) return res.status(400).json({ error: 'Title is required' });
@@ -36,7 +36,7 @@ export default async function handler(req: any, res: any) {
       return res.status(201).json({ success: true, topic: newTopic });
     }
 
-    // PUT: 주제 ?�태 ?�는 ?�용 ?�정
+    // PUT: 二쇱젣 ?곹깭 ?먮뒗 ?댁슜 ?섏젙
     if (req.method === 'PUT') {
       const { id, title, template, status } = req.body || {};
       if (!id) return res.status(400).json({ error: 'ID is required' });
@@ -54,7 +54,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ success: true, topic: topics[index] });
     }
 
-    // DELETE: 주제 ??��
+    // DELETE: 二쇱젣 ??젣
     if (req.method === 'DELETE') {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: 'ID is required' });
@@ -72,4 +72,5 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: error.message });
   }
 }
+
 
