@@ -88,7 +88,7 @@ const App: React.FC = () => {
         } catch (err) {
           console.error('Auto-generation error:', err);
           const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-          setError(`湲 ?앹꽦???ㅽ뙣?덉뒿?덈떎: ${errorMessage}`);
+          setError(`글 생성에 실패했습니다: ${errorMessage}`);
           setGenerationPhase('idle');
         }
       })();
@@ -97,7 +97,7 @@ const App: React.FC = () => {
 
   const handleGenerateClick = useCallback(async () => {
     if (!keyword.trim()) {
-      setError('?ㅼ썙?쒕? ?낅젰?댁＜?몄슂.');
+      setError('키워드를 입력해주세요.');
       return;
     }
     setGenerationPhase('generating');
@@ -117,7 +117,7 @@ const App: React.FC = () => {
       setGenerationPhase('awaitingImageConfirmation');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-      setError(`湲 ?앹꽦???ㅽ뙣?덉뒿?덈떎: ${errorMessage}`);
+      setError(`글 생성에 실패했습니다: ${errorMessage}`);
       console.error(err);
       setGenerationPhase('idle');
     }
@@ -141,7 +141,8 @@ const App: React.FC = () => {
         post: postWithImages,
         tags: pendingBlogResult.tags,
         imageKeywords: imageKeywords,
-        originalPost: pendingBlogResult.post // ?먮낯 ?ъ뒪?????      });
+        originalPost: pendingBlogResult.post // 원본 포스트 저장
+      });
       setPendingBlogResult(null);
       setGenerationPhase('complete');
     } catch (err) {
@@ -177,7 +178,8 @@ const App: React.FC = () => {
   const handleRegenerateImages = useCallback(() => {
     if (!blogResult) return;
 
-    // ?대?吏 ?ъ깮?깆쓣 ?꾪빐 pendingBlogResult濡??섎룎由?    // <figure> ?쒓렇? 洹??댁슜??紐⑤몢 ?쒓굅
+    // 이미지 재생성을 위해 pendingBlogResult로 되돌림
+    // <figure> 태그와 그 내용을 모두 제거
     const originalPost = blogResult.originalPost || blogResult.post.replace(/<figure[\s\S]*?<\/figure>/gi, '').replace(/\s*\n\s*\n\s*/g, '\n').trim();
 
     setPendingBlogResult({
@@ -195,13 +197,13 @@ const App: React.FC = () => {
       <div className="w-12 h-12 border-4 border-t-transparent border-cyan-500 rounded-full animate-spin"></div>
       {phase === 'generating' ? (
         <>
-          <p className="mt-4 text-lg">釉붾줈洹?湲???앹꽦?섍퀬 ?덉뒿?덈떎...</p>
-          <p className="text-sm">Gemini AI媛 理쒖떊 ?댁뒪瑜?寃?됲븯怨?遺꾩꽍?섎뒗 ???쒓컙??嫄몃┫ ???덉뒿?덈떎.</p>
+          <p className="mt-4 text-lg">블로그 글을 생성하고 있습니다...</p>
+          <p className="text-sm">Gemini AI가 최신 뉴스를 검색하고 분석하는 데 시간이 걸릴 수 있습니다.</p>
         </>
       ) : (
         <>
-          <p className="mt-4 text-lg">?대?吏瑜?寃?됲븯怨??덉뒿?덈떎...</p>
-          <p className="text-sm">Pexels?먯꽌 愿???대?吏瑜?李얘퀬 ?덉뒿?덈떎.</p>
+          <p className="mt-4 text-lg">이미지를 검색하고 있습니다...</p>
+          <p className="text-sm">Pexels에서 관련 이미지를 찾고 있습니다.</p>
         </>
       )}
     </div>
@@ -210,8 +212,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 flex flex-col p-4 md:p-8 transition-colors duration-300">
       <header className="w-full max-w-5xl mx-auto text-center mb-8 relative">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">?댁뒪 湲곕컲 釉붾줈洹??ъ뒪???앹꽦湲?/h1>
-        <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">Gemini AI瑜??ъ슜?섏뿬 理쒖떊 ?댁뒪濡?釉붾줈洹?湲 ?먮룞 ?앹꽦</p>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">aidajigi AI 전문 블로그 생성기</h1>
+        <p className="text-lg text-gray-500 dark:text-gray-400 mt-2">최신 인공지능 트렌드와 기술 분석을 위한 자동화 시스템</p>
         <button
           onClick={toggleTheme}
           className="absolute top-0 right-0 p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -236,7 +238,7 @@ const App: React.FC = () => {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !isLoading && handleGenerateClick()}
-            placeholder="釉붾줈洹?湲??二쇱젣媛 ???ㅼ썙?쒕? ?낅젰?섏꽭??(?? AI 諛섎룄泥?"
+            placeholder="블로그 글의 주제가 될 키워드를 입력하세요 (예: LLM 트렌드)"
             className="flex-grow bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
             disabled={isLoading}
           />
@@ -245,26 +247,26 @@ const App: React.FC = () => {
             onChange={(e) => setDateRange(e.target.value as DateRange)}
             className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
             disabled={isLoading}
-            aria-label="?댁뒪 寃??湲곌컙"
+            aria-label="뉴스 검색 기간"
           >
-            <option value="all">?꾩껜 湲곌컙</option>
-            <option value="day">吏??24?쒓컙</option>
-            <option value="week">吏??1二?/option>
-            <option value="month">吏??1媛쒖썡</option>
-            <option value="year">吏??1??/option>
+            <option value="all">전체 기간</option>
+            <option value="day">지난 24시간</option>
+            <option value="week">지난 1주</option>
+            <option value="month">지난 1개월</option>
+            <option value="year">지난 1년</option>
           </select>
           <select
             value={template}
             onChange={(e) => setTemplate(e.target.value as Template)}
             className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition"
             disabled={isLoading}
-            aria-label="釉붾줈洹??쒗뵆由?
+            aria-label="블로그 템플릿"
           >
-            <option value="default">湲곕낯 ?댁뒪 遺꾩꽍</option>
-            <option value="review">?쒗뭹/?쒕퉬??由щ럭</option>
-            <option value="interview">?꾨Ц媛 ?명꽣酉??뺤떇</option>
-            <option value="qa">Q&A ?뺤떇</option>
-            <option value="investment">?ъ옄?꾨왂 蹂닿퀬??/option>
+            <option value="default">기본 뉴스 분석</option>
+            <option value="review">제품/서비스 리뷰</option>
+            <option value="interview">전문가 인터뷰 형식</option>
+            <option value="qa">Q&A 형식</option>
+            <option value="investment">투자전략 보고서</option>
           </select>
           <button
             onClick={handleGenerateClick}
@@ -277,10 +279,10 @@ const App: React.FC = () => {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                ?앹꽦 以?..
+                생성 중...
               </>
             ) : (
-              '釉붾줈洹?湲 ?앹꽦'
+              '블로그 글 생성'
             )}
           </button>
         </div>
@@ -291,7 +293,7 @@ const App: React.FC = () => {
           ) : error ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/50 p-4 rounded-lg text-center">
-                <p className="font-bold mb-2">?ㅻ쪟 諛쒖깮</p>
+                <p className="font-bold mb-2">오류 발생</p>
                 <p>{error}</p>
               </div>
             </div>
@@ -324,7 +326,7 @@ const App: React.FC = () => {
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-500">
-              <p>?ㅼ썙?쒕? ?낅젰?섍퀬 '釉붾줈洹?湲 ?앹꽦' 踰꾪듉???대┃?섏뿬 ?쒖옉?섏꽭??</p>
+              <p>키워드를 입력하고 '블로그 글 생성' 버튼을 클릭하여 시작하세요.</p>
             </div>
           )}
         </div>
@@ -334,4 +336,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
