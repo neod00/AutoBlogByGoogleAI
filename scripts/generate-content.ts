@@ -66,7 +66,7 @@ async function fetchImagesFromPexels(query: string, count: number = 5): Promise<
   }
   try {
     const response = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&locale=ko-KR`,
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${count}&locale=ko-KR&orientation=landscape`,
       { headers: { Authorization: PEXELS_API_KEY } }
     );
     const data = await response.json() as { photos: PexelsPhoto[] };
