@@ -514,7 +514,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-lg">🤖</span>
-                        <h3 className="font-bold text-slate-800 dark:text-white">오토 파일럿 (완전 자동화)</h3>
+                        <h3 className="font-bold text-slate-800 dark:text-white">오토 파일럿(완전 자동화)</h3>
                       </div>
                       <p className="text-sm text-slate-500 dark:text-slate-400">
                         발굴된 키워드를 사람이 승인하지 않아도, AI가 최적의 시간에 랜덤하게(이틀에 1~2개 꼴) 자동 발행합니다.
