@@ -69,6 +69,8 @@ export default async function handler(req: any, res: any) {
             topics[index].status = 'publishing';
             await redis.set(key, topics);
         }
+        // 통계용/오토파일럿 방지용 마지막 발행 시간 업데이트
+        await redis.set('admin:last_posted_at', new Date().toISOString());
     }
 
     return res.status(200).json({ success: true, message: 'Publishing triggered successfully' });
