@@ -41,7 +41,7 @@ const TAB_CONFIG: { key: TabKey; icon: string; label: string; description: strin
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('keywords');
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [settings, setSettings] = useState({ recipientEmail: '', dailyTopic: '' });
+  const [settings, setSettings] = useState({ recipientEmail: '', dailyTopic: '', autoPilot: false });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
@@ -507,6 +507,35 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                 ⚙️ 전역 설정 관리
               </h2>
               <form onSubmit={handleSaveSettings} className="space-y-6">
+
+                {/* Auto Pilot Toggle */}
+                <div className="p-5 bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 rounded-2xl border border-cyan-100 dark:border-cyan-900/50">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">🤖</span>
+                        <h3 className="font-bold text-slate-800 dark:text-white">오토 파일럿 (완전 자동화)</h3>
+                      </div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        발굴된 키워드를 사람이 승인하지 않아도, AI가 최적의 시간에 랜덤하게(이틀에 1~2개 꼴) 자동 발행합니다.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={settings.autoPilot} 
+                        onChange={e => setSettings({...settings, autoPilot: e.target.checked})}
+                        className="sr-only peer" 
+                      />
+                      <div className="w-14 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-cyan-500 peer-checked:to-blue-600"></div>
+                    </label>
+                  </div>
+                  {settings.autoPilot && (
+                    <div className="mt-4 px-4 py-2 bg-white/50 dark:bg-slate-900/50 rounded-lg text-xs text-cyan-700 dark:text-cyan-400 font-medium flex items-center gap-2">
+                      <span className="animate-pulse">●</span> 현재 오토 파일럿이 활성화되어 2시간마다 최적의 발행 타이밍을 체크합니다.
+                    </div>
+                  )}
+                </div>
                 <div>
                   <label className="block text-sm font-semibold mb-2">결과 알림 수신 이메일</label>
                   <p className="text-xs text-slate-400 mb-2">쉼표로 여러 개 입력 가능</p>
