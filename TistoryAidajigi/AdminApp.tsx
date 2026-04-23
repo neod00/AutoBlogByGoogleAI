@@ -77,7 +77,7 @@ const AdminApp: React.FC = () => {
         <div className="flex items-center gap-2">
           <span className="text-xl">🛠️</span>
           <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-cyan-500 to-blue-500">
-            AI Blog Admin
+            AI Blog Admin (AutoPilot Ready)
           </h1>
         </div>
         <div className="flex items-center gap-4">
