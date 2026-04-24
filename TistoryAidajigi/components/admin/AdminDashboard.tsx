@@ -89,6 +89,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
     Promise.all([fetchTopics(), fetchSettings()]).finally(() => setLoading(false));
   }, [token]);
 
+  // Auto-refresh queue if any topic is publishing
+  useEffect(() => {
+    const isPublishing = topics.some(t => t.status === 'publishing');
+    if (isPublishing) {
+      const interval = setInterval(() => {
+        // fetch silently to avoid UI jumping with 'isRefreshing'
+        fetch('/api/admin/topics', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.topics) setTopics(data.topics);
+        })
+        .catch(() => {});
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [topics, token]);
+
   const handleAddTopic = async (e: React.FormEvent, publishImmediately = false) => {
     e.preventDefault();
     if (!newTitle) return;

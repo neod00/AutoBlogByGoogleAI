@@ -76,7 +76,7 @@ jobs:
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           # The user will need to set this in Vercel for the new project
-          APP_URL: ${{ github.event.client_payload.app_url || 'https://aidajigi-admin.vercel.app' }}
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://auto-blog-by-google-ai-2.vercel.app' }}
         run: |
           if [ -f /tmp/publish_result.json ]; then
             ERROR=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('error',''))")
@@ -105,7 +105,7 @@ jobs:
         if: always()
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          APP_URL: ${{ github.event.client_payload.app_url || 'https://aidajigi-admin.vercel.app' }}
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://auto-blog-by-google-ai-2.vercel.app' }}
           PUBLISH_ID: ${{ github.event.client_payload.publish_id }}
         run: |
           if [ -n "$PUBLISH_ID" ]; then
