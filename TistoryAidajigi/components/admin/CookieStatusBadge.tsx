@@ -241,44 +241,46 @@ const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
                 <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">오류: {data.error}</p>
               </div>
             )}
-            {status === 'expired' && (
-              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed mb-3">
-                  노트북 수동 로그인 대신 자동 쿠키 갱신(핸드폰 앱 승인)을 요청할 수 있습니다.
-                </p>
-                <button
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    if (!confirm('카카오 자동 로그인을 요청하시겠습니까? (핸드폰 카톡 알림 대기 필수)')) return;
+            <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
+                티스토리 세션이 만료된 경우 아래 버튼을 눌러 자동 로그인을 시도하세요. 카카오톡 승인이 필요할 수 있습니다.
+              </p>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!confirm('티스토리 자동 로그인을 요청하시겠습니까? (핸드폰 카톡 알림 대기 필수)')) return;
 
-                    try {
-                      const res = await fetch('/api/admin/trigger-refresh-cookie', {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${token}` },
-                      });
-                      if (res.ok) {
-                        alert('요청을 전송했습니다. 30~60초 뒤 결과를 확인해 주세요.');
-                      } else {
-                        alert('요청이 실패했습니다.');
-                      }
-                    } catch (err) {
-                      console.error(err);
-                      alert('요청 중 오류가 발생했습니다.');
+                  try {
+                    setRefreshing(true);
+                    setRefreshNote('로그인 갱신 요청 중...');
+                    const res = await fetch('/api/admin/trigger-refresh-cookie', {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                      setRefreshNote('요청 완료! 1~2분 뒤 초록불이 켜지는지 확인하세요.');
+                      alert('요청을 전송했습니다. 카톡 알림이 오는지 확인해 주시고, 1~2분 뒤 결과를 확인해 주세요.');
+                    } else {
+                      setRefreshNote('요청 실패');
+                      alert('요청이 실패했습니다.');
                     }
-                  }}
-                  className="w-full py-2 px-3 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-800/60 text-amber-800 dark:text-amber-300 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                >
-                  카카오 자동 갱신 요청
-                </button>
-              </div>
-            )}
-            {status === 'unknown' && (
-              <div className="mt-3 p-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  아직 상태 보고 기록이 없거나 점검 결과가 반영되기 전입니다.
-                </p>
-              </div>
-            )}
+                  } catch (err) {
+                    console.error(err);
+                    alert('요청 중 오류가 발생했습니다.');
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+                disabled={refreshing}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
+              >
+                {refreshing ? (
+                  <><span className="animate-spin">🔄</span> 요청 중...</>
+                ) : (
+                  <>🚀 티스토리 로그인/쿠키 갱신 요청</>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </div>
