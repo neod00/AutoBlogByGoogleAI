@@ -14,10 +14,26 @@ export default async function handler(req: any, res: any) {
     console.log('[AutoPilot] Starting check...');
 
     try {
+        // 2. Cookie Health Check (Self-healing)
+        const cookieStatus = await redis.get<any>('admin:cookie_status') || {};
+        if (cookieStatus.status !== 'valid') {
+            console.log('[AutoPilot] Cookie is not valid. Triggering self-healing refresh...');
+            // Trigger refresh workflow without waiting
+            fetch(`${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/admin/trigger-refresh-cookie`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${CRON_SECRET}` }
+            }).catch(e => console.error('[AutoPilot] Self-healing trigger failed:', e));
+
+            return res.status(200).json({
+                message: 'AutoPilot paused: Cookie invalid. Triggered self-healing refresh. Check KakaoTalk.',
+                cookieStatus
+            });
+        }
+
         // 2. Load Settings
         const settings = await redis.get<any>('admin:settings') || {};
         const isAutoPilotEnabled = settings.autoPilot === true;
-        
+
         if (!isAutoPilotEnabled) {
             console.log('[AutoPilot] Disabled in settings. Skipping.');
             return res.status(200).json({ message: 'AutoPilot is disabled' });
@@ -39,9 +55,9 @@ export default async function handler(req: any, res: any) {
         } else if (hoursSinceLastRun > 24) {
             probability = 1.0;  // Force publish if > 24h
         } else if (hoursSinceLastRun > 18) {
-            probability = 0.8;  
+            probability = 0.8;
         } else if (hoursSinceLastRun > 12) {
-            probability = 0.4;  
+            probability = 0.4;
         }
 
         const roll = Math.random();
@@ -50,7 +66,7 @@ export default async function handler(req: any, res: any) {
         console.log(`[AutoPilot] Probability: ${probability}, Roll: ${roll.toFixed(4)}, Should Trigger: ${shouldTrigger}`);
 
         if (!shouldTrigger) {
-            return res.status(200).json({ 
+            return res.status(200).json({
                 message: 'Skipping this run based on probability',
                 stats: { hoursSinceLastRun, probability, roll }
             });
@@ -101,7 +117,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // 7. Update State
-        const updatedTopics = topics.map(t => 
+        const updatedTopics = topics.map(t =>
             t.id === pendingTopic.id ? { ...t, status: 'publishing', publishedAt: now.toISOString() } : t
         );
         await redis.set(topicsKey, updatedTopics);
@@ -109,7 +125,7 @@ export default async function handler(req: any, res: any) {
 
         console.log('[AutoPilot] Successfully triggered publication!');
 
-        return res.status(200).json({ 
+        return res.status(200).json({
             message: 'AutoPilot triggered publication',
             topic: pendingTopic.title,
             stats: { hoursSinceLastRun, probability, roll }
