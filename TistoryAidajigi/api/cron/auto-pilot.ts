@@ -31,17 +31,17 @@ export default async function handler(req: any, res: any) {
 
         console.log(`[AutoPilot] Hours since last run: ${hoursSinceLastRun.toFixed(2)}`);
 
-        // 4. Probability Logic (Targeting ~0.75 posts/day)
-        let probability = 0.06; 
+        // 4. Probability Logic (More aggressive to ensure daily posts)
+        let probability = 0.1; // Base 10%
 
-        if (hoursSinceLastRun < 12) {
-            probability = 0.01; 
-        } else if (hoursSinceLastRun > 48) {
-            probability = 1.0;  
-        } else if (hoursSinceLastRun > 36) {
-            probability = 0.5;  
+        if (hoursSinceLastRun < 6) {
+            probability = 0.01; // Minimum wait
         } else if (hoursSinceLastRun > 24) {
-            probability = 0.2;  
+            probability = 1.0;  // Force publish if > 24h
+        } else if (hoursSinceLastRun > 18) {
+            probability = 0.8;  
+        } else if (hoursSinceLastRun > 12) {
+            probability = 0.4;  
         }
 
         const roll = Math.random();
