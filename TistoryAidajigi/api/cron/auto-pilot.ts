@@ -49,17 +49,19 @@ export default async function handler(req: any, res: any) {
 
         console.log(`[AutoPilot] Hours since last run: ${hoursSinceLastRun.toFixed(2)}`);
 
-        // 4. Probability Logic (More aggressive to ensure daily posts)
-        let probability = 0.1; // Base 10%
+        // 4. Probability Logic (Targeting 1~2 posts per 48 hours, guaranteed at least 1 per 48h)
+        let probability = 0.01; // Base 1%
 
-        if (hoursSinceLastRun < 6) {
-            probability = 0.01; // Minimum wait
+        if (hoursSinceLastRun > 48) {
+            probability = 1.0;  // Force publish if > 48h (이틀에 최소 1개 보장)
+        } else if (hoursSinceLastRun > 36) {
+            probability = 0.25; // 36~48시간 사이: 약 25% 확률
         } else if (hoursSinceLastRun > 24) {
-            probability = 1.0;  // Force publish if > 24h
-        } else if (hoursSinceLastRun > 18) {
-            probability = 0.8;
+            probability = 0.10; // 24~36시간 사이: 약 10% 확률
         } else if (hoursSinceLastRun > 12) {
-            probability = 0.4;
+            probability = 0.05; // 12~24시간 사이: 약 5% 확률
+        } else {
+            probability = 0.01; // 12시간 이내: 거의 발행 안 함
         }
 
         const roll = Math.random();
