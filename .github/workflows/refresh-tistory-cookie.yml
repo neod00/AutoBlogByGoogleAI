@@ -35,7 +35,7 @@ jobs:
       - name: Convert and Update Secret
         env:
           GH_TOKEN: ${{ secrets.REPO_PAT }}
-          APP_URL: https://auto-blog-by-google-ai.vercel.app
+          APP_URL: https://auto-blog-by-google-ai-2.vercel.app
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           COOKIE_FILE=$(find ~/.tistory_login/cookies -name "*_cookies.pkl" 2>/dev/null | head -n 1)

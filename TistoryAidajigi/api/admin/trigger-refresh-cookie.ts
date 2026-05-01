@@ -1,4 +1,4 @@
-﻿import { isAuthenticated } from '../_lib/redis.js';
+import { isAuthenticated } from '../_lib/redis.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -7,7 +7,13 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!isAuthenticated(req)) {
+  // Accept both ADMIN_PASSWORD (from dashboard) and CRON_SECRET (from auto-pilot self-healing)
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.authorization;
+  const tokenProvided = authHeader ? authHeader.replace("Bearer ", "").trim() : "";
+  
+  if (tokenProvided !== adminPassword && tokenProvided !== cronSecret) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
