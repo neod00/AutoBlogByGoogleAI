@@ -14,23 +14,9 @@ export default async function handler(req: any, res: any) {
     console.log('[AutoPilot] Starting check...');
 
     try {
-        // 2. Cookie Health Check (Self-healing)
-        // Only block on explicit 'expired'. Allow 'unknown' or unset to proceed.
+        // 2. Cookie Status (Log only — publish script handles re-login itself)
         const cookieStatus = await redis.get<any>('admin:cookie_status') || {};
-        if (cookieStatus.status === 'expired') {
-            console.log('[AutoPilot] Cookie is EXPIRED. Triggering self-healing refresh...');
-            // Trigger refresh workflow without waiting
-            fetch(`${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/admin/trigger-refresh-cookie`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${CRON_SECRET}` }
-            }).catch(e => console.error('[AutoPilot] Self-healing trigger failed:', e));
-
-            return res.status(200).json({
-                message: 'AutoPilot paused: Cookie expired. Triggered self-healing refresh. Check KakaoTalk.',
-                cookieStatus
-            });
-        }
-        console.log(`[AutoPilot] Cookie status: ${cookieStatus.status || 'not set'} — proceeding.`);
+        console.log(`[AutoPilot] Cookie status: ${cookieStatus.status || 'not set'} — proceeding regardless (publish script handles re-login).`);
 
         // 2. Load Settings
         const settings = await redis.get<any>('admin:settings') || {};
