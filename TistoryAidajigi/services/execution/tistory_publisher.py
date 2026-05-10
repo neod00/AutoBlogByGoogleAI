@@ -136,18 +136,24 @@ class TistoryPublisher:
                     continue
             self._log(f"   📍 현재 URL: {current_url}")
 
-            # 로그인 페이지로 리다이렉트된 경우
+            # 로그인 페이지로 리다이렉트된 경우 → 쿠키가 만료됨!
             if "accounts.kakao.com" in current_url or "/login" in current_url:
-                self._log("   ⚠️ 로그인 페이지로 리다이렉트됨 — 쿠키 만료 가능")
-                # 쿠키 재로딩 시도
-                try:
-                    if self.login.login_with_cookies_only():
-                        self.driver = self.login.get_driver()
-                        self._log("   🔄 쿠키 재로딩 성공")
-                    else:
-                        self._log("   ❌ 쿠키 재로딩 실패")
-                except Exception:
-                    pass
+                self._log("   ⚠️ 로그인 페이지로 리다이렉트됨 — 쿠키 만료 확정")
+                
+                if attempt < 2:  # 마지막 시도 전까지만 재로그인 시도
+                    # 같은 만료 쿠키를 다시 넣는 것은 무의미 → 새로 로그인 시도
+                    self._log("   🔑 카카오 OAuth 새로 로그인 시도...")
+                    try:
+                        fresh_login = TistoryAutoLogin.from_env(headless=True)
+                        if fresh_login.login(max_2fa_wait_minutes=3):
+                            self._log("   ✅ 카카오 새 로그인 성공!")
+                            self.login = fresh_login
+                            self.driver = fresh_login.get_driver()
+                            continue
+                        else:
+                            self._log("   ❌ 카카오 새 로그인 실패 (2FA 미승인?)")
+                    except Exception as e:
+                        self._log(f"   ❌ 새 로그인 시도 오류: {e}")
                 continue
 
             # 글쓰기 페이지 로딩 확인 (30초 대기)

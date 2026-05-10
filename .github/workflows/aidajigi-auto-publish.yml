@@ -65,6 +65,8 @@ jobs:
         id: publish
         env:
           TISTORY_BLOG_URL: https://aidajigi.tistory.com
+          TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
+          TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
         run: |
           xvfb-run --auto-servernum python TistoryAidajigi/scripts/publish-to-tistory.py \
             --content-file /tmp/blog_output.json \
