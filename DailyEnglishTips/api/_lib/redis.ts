@@ -8,7 +8,7 @@ const redisInstance = new Redis({
   token: token || "",
 });
 
-const PREFIX = 'aidajigi:';
+const PREFIX = process.env.REDIS_PREFIX || 'aidajigi:';
 
 export const redis = {
     get: async <T>(key: string) => redisInstance.get<T>(PREFIX + key),
