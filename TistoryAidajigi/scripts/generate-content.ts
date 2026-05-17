@@ -343,6 +343,11 @@ async function main() {
   post = post.replace(/<p[^>]*>\s*<strong>\s*다음에 검색해볼 키워드[^<]*<\/strong>[^<]*<\/p>/gi, "");
   post = post.replace(/다음에 검색해볼 키워드[^<]*/gi, "");
 
+  // Strip "예상 독서 시간" / "읽기 시간" sentences from POST
+  post = post.replace(/예상 독서 시간[^.]*\./g, "");
+  post = post.replace(/읽기 시간[^.]*\./g, "");
+  post = post.replace(/약 \d+분입니다\./g, "");
+
   // Build reference section from [SOURCES] block only (plain text, no links)
   // NOTE: Gemini grounding URLs (vertexaisearch.cloud.google.com/grounding-api-redirect/...)
   // are temporary redirect URLs that expire quickly and look spammy to search engines.
