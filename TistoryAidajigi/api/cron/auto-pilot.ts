@@ -13,6 +13,19 @@ export default async function handler(req: any, res: any) {
 
     console.log('[AutoPilot] Starting check...');
 
+    // 1.5. Active Hours Check (KST 09:00 ~ 23:59 only)
+    // Prevents KakaoTalk 2FA notifications from arriving at night
+    const nowKST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const hourKST = nowKST.getHours();
+    if (hourKST < 9 || hourKST >= 24) {
+        console.log(`[AutoPilot] Outside active hours (KST ${hourKST}:00). Skipping to avoid nighttime KakaoTalk alerts.`);
+        return res.status(200).json({
+            message: 'Outside active hours (KST 09:00-23:59)',
+            currentHourKST: hourKST
+        });
+    }
+    console.log(`[AutoPilot] Active hours OK (KST ${hourKST}:00)`);
+
     try {
         // 2. Cookie Status (Log only — publish script handles re-login itself)
         const cookieStatus = await redis.get<any>('admin:cookie_status') || {};
