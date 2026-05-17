@@ -339,38 +339,34 @@ async function main() {
   // Strip accidental reference sections from POST
   post = post.replace(/<h[23][^>]*>\s*(참고|참고:|참고 자료|출처)[^<]*<\/h[23]>[\s\S]*?(?=<h[23]|$)/gi, "");
 
-  // Build reference section from grounding metadata
-  const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
-  const groundingUrls = (groundingMetadata?.groundingChunks || [])
-    .map((c: any) => ({ url: c?.web?.uri || "", domain: c?.web?.title || "" }))
-    .filter((u: any) => u.url);
+  // Strip "다음에 검색해볼 키워드" remnants from POST
+  post = post.replace(/<p[^>]*>\s*<strong>\s*다음에 검색해볼 키워드[^<]*<\/strong>[^<]*<\/p>/gi, "");
+  post = post.replace(/다음에 검색해볼 키워드[^<]*/gi, "");
 
+  // Build reference section from [SOURCES] block only (plain text, no links)
+  // NOTE: Gemini grounding URLs (vertexaisearch.cloud.google.com/grounding-api-redirect/...)
+  // are temporary redirect URLs that expire quickly and look spammy to search engines.
+  // We intentionally do NOT use them. Source titles are shown as plain text citations.
   const sourceTitles = sourcesMatch
     ? sourcesMatch[1].trim().split("\n").map(s => s.trim()).filter(Boolean)
     : [];
 
-  if (sourceTitles.length > 0 || groundingUrls.length > 0) {
+  // Limit references to max 5 most relevant sources
+  const MAX_REFERENCES = 5;
+  const limitedSourceTitles = sourceTitles.slice(0, MAX_REFERENCES);
+
+  if (limitedSourceTitles.length > 0) {
     let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;">';
     refHtml += '<details style="cursor:pointer;"><summary style="font-size:1.1rem;font-weight:bold;color:#475569;">📚 본문 출처 및 참고자료 (클릭하여 펼치기)</summary>';
     refHtml += '<ul style="list-style:disc;padding-left:1.5rem;margin-top:1rem;font-size:0.9rem;color:#64748b;">';
-    const usedUrls = new Set<string>();
 
-    for (const st of sourceTitles) {
-      let matchedUrl = "";
-      for (const g of groundingUrls) {
-        if (!usedUrls.has(g.url)) {
-          matchedUrl = g.url;
-          usedUrls.add(g.url);
-          break;
-        }
-      }
-      refHtml += matchedUrl
-        ? `<li style="margin-bottom:0.5rem;"><a href="${matchedUrl}" target="_blank" rel="noopener" style="color:#0ea5e9;text-decoration:underline;">${st}</a></li>`
-        : `<li style="margin-bottom:0.5rem;">${st}</li>`;
+    for (const st of limitedSourceTitles) {
+      refHtml += `<li style="margin-bottom:0.5rem;">${st}</li>`;
     }
 
     refHtml += "</ul></details></div>";
     post += refHtml;
+    console.error(`[generate] Reference sources: ${limitedSourceTitles.length} (text-only, no redirect links)`);
   }
 
   // ── Inject images from Pexels ──

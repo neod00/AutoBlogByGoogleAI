@@ -49,6 +49,30 @@ AI_SPEAK_PATTERNS = [
     r"I cannot browse",
 ]
 
+# AI 생성 잔재 패턴 (제거되어야 하는 것들)
+AI_RESIDUE_PATTERNS = [
+    r"다음에\s*검색해볼\s*키워드",
+]
+
+# 제목에서 금지된 상대적 시간 표현
+TITLE_TENSE_PATTERNS = [
+    r"내년부터",
+    r"올해부터",
+    r"내년에는",
+    r"다음\s*해부터",
+]
+
+# blog_instructions.md 금지 표현
+BANNED_EXPRESSIONS = [
+    "자리매김", "자리 잡", "원년", "서막", "이정표", "쓰나미", "파도",
+    "본격화", "주역", "변곡점",
+    "패러다임", "지평", "주목할 만", "장악", "혁신을 가져올",
+    "열쇠입니다", "달려 있습니다", "성공의 비결",
+]
+
+# 문단 최대 길이 (글자 수)
+MAX_PARAGRAPH_LENGTH = 200       # 150자 목표이지만 약간의 여유
+
 # 티스토리/애드센스 정책 위반 가능성 높은 금칙어
 POLICY_BANNED_WORDS = [
     "도박", "카지노", "성인용", "불법 다운로드", "토렌트",
@@ -264,6 +288,58 @@ def check_completeness(report: QualityReport, html: str):
         report.pass_check("글 완전성", "정상")
 
 
+def check_title_tense(report: QualityReport, title: str):
+    """제목의 시제 오류 검증 (상대적 시간 표현 금지)"""
+    found = []
+    for pattern in TITLE_TENSE_PATTERNS:
+        if re.search(pattern, title):
+            found.append(pattern)
+    
+    if found:
+        report.warn_check("제목 시제", f"상대적 시간 표현 발견: {', '.join(found)} — 구체적 날짜 또는 현재형 사용 권장")
+    else:
+        report.pass_check("제목 시제", "시제 오류 없음")
+
+
+def check_paragraph_length(report: QualityReport, html: str):
+    """문단 길이 검증 (150자 초과 문단 감지)"""
+    paragraphs = re.findall(r'<p[^>]*>(.*?)</p>', html, re.IGNORECASE | re.DOTALL)
+    long_paragraphs = []
+    for i, p in enumerate(paragraphs):
+        plain = strip_html(p)
+        if len(plain) > MAX_PARAGRAPH_LENGTH:
+            long_paragraphs.append((i + 1, len(plain)))
+    
+    if long_paragraphs:
+        details = "; ".join([f"문단{n}: {l}자" for n, l in long_paragraphs[:5]])
+        report.warn_check("문단 길이", f"{len(long_paragraphs)}개 문단이 {MAX_PARAGRAPH_LENGTH}자 초과 — {details}")
+    else:
+        report.pass_check("문단 길이", "모든 문단 적정 길이")
+
+
+def check_ai_residue(report: QualityReport, plain_text: str):
+    """AI 생성 잔재 감지 (다음에 검색해볼 키워드 등)"""
+    found = []
+    for pattern in AI_RESIDUE_PATTERNS:
+        if re.search(pattern, plain_text):
+            found.append(pattern)
+    
+    if found:
+        report.warn_check("AI 생성 잔재", f"{len(found)}개 패턴 발견 — 제거 필요")
+    else:
+        report.pass_check("AI 생성 잔재", "잔재 없음")
+
+
+def check_banned_expressions(report: QualityReport, plain_text: str):
+    """금지 표현 검사 (blog_instructions.md 기준)"""
+    found = [expr for expr in BANNED_EXPRESSIONS if expr in plain_text]
+    
+    if found:
+        report.warn_check("금지 표현", f"발견: {', '.join(found[:5])} — 구체적 표현으로 대체 필요")
+    else:
+        report.pass_check("금지 표현", "금지 표현 없음")
+
+
 # ═══════════════════════════════════════════════════════════════
 # 메인
 # ═══════════════════════════════════════════════════════════════
@@ -305,6 +381,10 @@ def main():
     check_keyword_density(report, plain_text, args.topic)
     check_policy(report, plain_text)
     check_completeness(report, html)
+    check_title_tense(report, title)
+    check_paragraph_length(report, html)
+    check_ai_residue(report, plain_text)
+    check_banned_expressions(report, plain_text)
 
     # 리포트 출력
     report.print_report()

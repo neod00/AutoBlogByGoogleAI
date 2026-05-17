@@ -41,6 +41,7 @@ interface DiscoveredKeyword {
   searchIntent: string;
   difficulty: 'low' | 'medium' | 'high';
   template: string;
+  category: string;
   reasoning: string;
   status: 'discovered' | 'approved' | 'dismissed';
   discoveredAt: string;
@@ -89,6 +90,24 @@ ${factText}
 2. 경쟁도가 낮고 구체적인 롱테일 정보탐색형(Information-seeking) 키워드일 것.
 3. 체류시간(Dwell time)이 높을 수 있는 구체적이고 실용적인 가이드, 분석, 비교 형식을 띌 것.
 
+[중요: 카테고리 분산 규칙]
+블로그에는 다음 카테고리가 있습니다:
+- AI 뉴스 & 트렌드: 속보성 AI 뉴스 분석
+- AI 모델 리뷰: 특정 AI 모델/서비스 사용기, 벤치마크 비교
+- 생성형 AI: 이미지/텍스트/영상 생성 AI 활용법
+- AI 기업 동향: 빅테크 전략 분석, 스타트업 소식
+- 기업 AI 전환(AX): 기업의 AI 도입 전략, 거버넌스
+- AI 정책 & 표준: 법률, 규제, 표준화 동향
+- AI 활용 가이드: 실무자를 위한 단계별 가이드, 프롬프트 팁
+
+발굴하는 2개의 키워드는 **서로 다른 카테고리**에 해당하도록 하세요.
+특히 "기업 AI 전환(AX)" 카테고리는 이미 글이 많으므로, 가능하면 "AI 모델 리뷰", "AI 활용 가이드", "생성형 AI" 등 다른 카테고리를 우선 선택하세요.
+
+[중요: 제목 규칙]
+- 제목에 "내년부터", "올해부터" 같은 상대적 시간 표현은 절대 금지.
+- "~의 서막", "~로 진화하다", "~ 완벽 가이드" 같은 AI스러운 제목 금지.
+- "20XX년, ~" 패턴 (연도 + 쉼표/콜론) 금지.
+
 STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 [
   {
@@ -100,6 +119,7 @@ STRICT OUTPUT FORMAT (JSON array, no markdown fences):
     "searchIntent": "one of: 정보탐색, 비교분석, 방법가이드, 트렌드분석, 심층해설",
     "difficulty": "one of: low, medium, high",
     "template": "one of: default, review, interview, qa, investment",
+    "category": "one of: AI 뉴스 & 트렌드, AI 모델 리뷰, 생성형 AI, AI 기업 동향, 기업 AI 전환(AX), AI 정책 & 표준, AI 활용 가이드",
     "reasoning": "One sentence explaining WHY this keyword is good based strictly on the facts (Korean)"
   }
 ]
@@ -108,6 +128,7 @@ IMPORTANT:
 - Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
 - All text content must be in Korean.
 - suggestedTitle must be compelling and FACTUAL based on the facts provided.
+- 2개의 키워드는 반드시 서로 다른 category 값을 가져야 합니다.
 - 제목에 연도(예: 2026년)를 넣을지 여부는 글의 성격에 따라 판단하세요:
   ✅ 연도를 넣어야 하는 경우: 정책/법률 변경, 연간 트렌드 전망, 시즌별 제품 비교 등 시의성이 핵심인 글
   ❌ 연도를 넣지 말아야 하는 경우: 개념 설명, 원리 해설, 일반적인 방법론 가이드 등 시간에 구애받지 않는 에버그린(Evergreen) 콘텐츠`;
@@ -134,6 +155,7 @@ IMPORTANT:
             searchIntent: item.searchIntent || '정보탐색',
             difficulty: item.difficulty || 'medium',
             template: item.template || 'default',
+            category: item.category || '기타',
             reasoning: item.reasoning || '',
             status: 'discovered' as const,
             discoveredAt: new Date().toISOString(),
