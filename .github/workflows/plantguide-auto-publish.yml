@@ -1,0 +1,120 @@
+name: PlantGuide AI Blog Publish
+
+on:
+  repository_dispatch:
+    types: [plantguide_publish_post]
+
+# Prevent concurrent runs for this specific blog
+concurrency:
+  group: plantguide-auto-publish
+  cancel-in-progress: false
+
+env:
+  LANG: ko_KR.UTF-8
+  LC_ALL: C.UTF-8
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  generate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          # Use the root package.json for dependencies
+      
+      - run: npm ci
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install selenium webdriver-manager python-dotenv
+
+      - name: Install Chrome Dependencies and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libxss1 libasound2t64 libatk-bridge2.0-0t64 libgtk-3-0 libgbm1 libdrm2 xvfb
+
+      - name: Restore cookies
+        run: |
+          mkdir -p ~/.tistory_login/cookies
+          echo "${{ secrets.TISTORY_COOKIES_B64 }}" | base64 -d > ~/.tistory_login/cookies/default_cookies.pkl
+
+      - name: Generate blog content
+        id: generate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
+          PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'news' }}
+        run: |
+          echo "Generating aidajigi blog post for: $PUBLISH_TOPIC"
+          # Run from the subfolder script but it should be able to find directives
+          npx tsx PlantGuide/scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
+          cat /tmp/blog_output.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Title: {d.get(\"title\",\"?\")[:60]}')"
+
+      - name: Publish to Tistory
+        id: publish
+        env:
+          TISTORY_BLOG_URL: https://greenthumb-kr.tistory.com
+          TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
+          TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
+        run: |
+          xvfb-run --auto-servernum python PlantGuide/scripts/publish-to-tistory.py \
+            --content-file /tmp/blog_output.json \
+            --blog-url "$TISTORY_BLOG_URL" \
+            --categories "AI ?�스 & ?�렌??AI 모델 리뷰,?�성??AI,AI 기업 ?�향,기업 AI ?�환(AX),AI ?�책 & ?��?,AI ?�용 가?�드,기�?"
+
+      - name: Report cookie status
+        if: always()
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # The user will need to set this in Vercel for the new project
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://plantguide-admin.vercel.app' }}
+        run: |
+          if [ -f /tmp/publish_result.json ]; then
+            ERROR=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('error',''))")
+            SUCCESS=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('success', False))")
+            if [ "$SUCCESS" = "True" ]; then STATUS="valid"; ERROR_MSG="";
+            elif echo "$ERROR" | grep -qiE "로그??login|cookie|쿠키|로딩 ?�패|redirect"; then STATUS="expired"; ERROR_MSG="$ERROR";
+            else STATUS="valid"; ERROR_MSG=""; fi
+          else
+            STATUS="unknown"; ERROR_MSG="publish_result.json not found";
+          fi
+          curl -s -X POST "$APP_URL/api/admin/cookie-status" \
+            -H "Authorization: Bearer $ADMIN_PASSWORD" \
+            -H "Content-Type: application/json" \
+            -d "{\"status\": \"$STATUS\", \"error\": \"$ERROR_MSG\"}" || echo "Warning: Failed to report"
+
+      - name: Send notification email
+        if: always()
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ github.event.client_payload.recipientEmail || secrets.GMAIL_USER }}
+        run: |
+          npx tsx PlantGuide/scripts/send-result-email.ts
+
+      - name: Update topic status
+        if: always()
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://plantguide-admin.vercel.app' }}
+          PUBLISH_ID: ${{ github.event.client_payload.publish_id }}
+        run: |
+          if [ -n "$PUBLISH_ID" ]; then
+            STATUS=$([ "${{ job.status }}" = "success" ] && echo "published" || echo "failed")
+            curl -s -X PUT "$APP_URL/api/admin/topics" \
+              -H "Authorization: Bearer $ADMIN_PASSWORD" \
+              -H "Content-Type: application/json" \
+              -d "{\"id\": \"$PUBLISH_ID\", \"status\": \"$STATUS\"}"
+          fi
+

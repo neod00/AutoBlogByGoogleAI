@@ -1,0 +1,291 @@
+import React, { useState, useEffect, useCallback } from 'react';
+
+interface CookieStatus {
+  status: 'valid' | 'expired' | 'unknown';
+  checkedAt: string;
+  error: string;
+  lastValidAt: string;
+}
+
+interface CookieStatusBadgeProps {
+  token: string;
+}
+
+const CookieStatusBadge: React.FC<CookieStatusBadgeProps> = ({ token }) => {
+  const [data, setData] = useState<CookieStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNote, setRefreshNote] = useState('');
+
+  const fetchStatus = useCallback(async (): Promise<CookieStatus | null> => {
+    try {
+      const res = await fetch('/api/admin/cookie-status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const next = json.cookieStatus as CookieStatus;
+        setData(next);
+        return next;
+      }
+    } catch (err) {
+      console.error('Failed to fetch cookie status:', err);
+    } finally {
+      setLoading(false);
+    }
+
+    return null;
+  }, [token]);
+
+  const handleRefresh = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setRefreshing(true);
+      setRefreshNote('로그인 상태 실점검 요청 중...');
+
+      const beforeCheckedAt = data?.checkedAt || '';
+
+      try {
+        const triggerRes = await fetch('/api/admin/trigger-refresh-cookie', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!triggerRes.ok) {
+          setRefreshNote('점검 요청 실패. 상태만 새로 조회했습니다.');
+          await fetchStatus();
+          return;
+        }
+
+        setRefreshNote('점검 요청 완료. 최대 60초 동안 결과를 확인합니다...');
+
+        // GitHub Action is asynchronous. Poll updated checkedAt for up to 60s.
+        for (let i = 0; i < 12; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          const latest = await fetchStatus();
+          if (latest?.checkedAt && latest.checkedAt !== beforeCheckedAt) {
+            setRefreshNote('최신 로그인 점검 결과로 갱신되었습니다.');
+            return;
+          }
+        }
+
+        setRefreshNote('요청은 완료됐지만 아직 새 점검 결과가 도착하지 않았습니다.');
+      } catch (err) {
+        console.error('Failed to trigger cookie refresh:', err);
+        setRefreshNote('점검 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [data?.checkedAt, fetchStatus, token]
+  );
+
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  const formatTimeAgo = (isoString: string): string => {
+    if (!isoString) return '확인 기록 없음';
+
+    const diff = Date.now() - new Date(isoString).getTime();
+    const mins = Math.floor(diff / 60_000);
+
+    if (mins < 1) return '방금 전';
+    if (mins < 60) return `${mins}분 전`;
+
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}시간 전`;
+
+    const days = Math.floor(hours / 24);
+    return `${days}일 전`;
+  };
+
+  const formatDateTime = (isoString: string): string => {
+    if (!isoString) return '-';
+    return new Date(isoString).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+  };
+
+  if (loading) {
+    return <div className="animate-pulse bg-slate-200 dark:bg-slate-700 rounded-2xl h-20" />;
+  }
+
+  const status = data?.status || 'unknown';
+
+  const config = {
+    valid: {
+      icon: '🟢',
+      label: '티스토리 로그인 정상',
+      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+      border: 'border-emerald-200 dark:border-emerald-800',
+      textColor: 'text-emerald-700 dark:text-emerald-400',
+      dotColor: 'bg-emerald-500',
+      pulseColor: 'bg-emerald-400',
+      gradientFrom: 'from-emerald-500',
+      gradientTo: 'to-teal-500',
+    },
+    expired: {
+      icon: '🔴',
+      label: '티스토리 로그인 만료됨',
+      bg: 'bg-red-50 dark:bg-red-950/40',
+      border: 'border-red-200 dark:border-red-800',
+      textColor: 'text-red-700 dark:text-red-400',
+      dotColor: 'bg-red-500',
+      pulseColor: 'bg-red-400',
+      gradientFrom: 'from-red-500',
+      gradientTo: 'to-orange-500',
+    },
+    unknown: {
+      icon: '⚪',
+      label: '상태 미확인',
+      bg: 'bg-slate-100 dark:bg-slate-800/60',
+      border: 'border-slate-200 dark:border-slate-700',
+      textColor: 'text-slate-600 dark:text-slate-400',
+      dotColor: 'bg-slate-400',
+      pulseColor: 'bg-slate-300',
+      gradientFrom: 'from-slate-400',
+      gradientTo: 'to-slate-500',
+    },
+  };
+
+  const c = config[status];
+
+  return (
+    <div
+      className={`relative overflow-hidden ${c.bg} border ${c.border} rounded-2xl transition-all duration-300 cursor-pointer hover:shadow-lg`}
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${c.gradientFrom} ${c.gradientTo}`} />
+
+      <div className="p-5 pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center w-10 h-10">
+              <span
+                className={`absolute w-6 h-6 rounded-full ${c.pulseColor} opacity-30 ${
+                  status === 'expired' ? 'animate-ping' : ''
+                }`}
+              />
+              <span className={`relative w-3.5 h-3.5 rounded-full ${c.dotColor} shadow-sm`} />
+            </div>
+
+            <div>
+              <h3 className={`text-sm font-bold ${c.textColor}`}>{c.label}</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                마지막 확인: {formatTimeAgo(data?.checkedAt || '')}
+              </p>
+              {refreshNote && (
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{refreshNote}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="로그인 상태 실점검"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={refreshing ? 'animate-spin' : ''}
+                style={{ animationDuration: '0.8s' }}
+              >
+                <path d="M21.5 2v6h-6" />
+                <path d="M2.5 22v-6h6" />
+                <path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8" />
+                <path d="M22 12.5a10 10 0 0 1-18.8 4.2L2.5 16" />
+              </svg>
+            </button>
+
+            <div className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500 dark:text-slate-400">마지막 확인 시각</span>
+              <span className={c.textColor}>{formatDateTime(data?.checkedAt || '')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500 dark:text-slate-400">마지막 정상 확인</span>
+              <span className="text-emerald-600 dark:text-emerald-400">{formatDateTime(data?.lastValidAt || '')}</span>
+            </div>
+            {data?.error && (
+              <div className="mt-2 p-3 bg-red-100/60 dark:bg-red-900/20 rounded-xl">
+                <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">오류: {data.error}</p>
+              </div>
+            )}
+            <div className="mt-3 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
+                티스토리 세션이 만료된 경우 아래 버튼을 눌러 자동 로그인을 시도하세요. 카카오톡 승인이 필요할 수 있습니다.
+              </p>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!confirm('티스토리 자동 로그인을 요청하시겠습니까? (핸드폰 카톡 알림 대기 필수)')) return;
+
+                  try {
+                    setRefreshing(true);
+                    setRefreshNote('로그인 갱신 요청 중...');
+                    const res = await fetch('/api/admin/trigger-refresh-cookie', {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (res.ok) {
+                      setRefreshNote('요청 완료! 1~2분 뒤 초록불이 켜지는지 확인하세요.');
+                      alert('요청을 전송했습니다. 카톡 알림이 오는지 확인해 주시고, 1~2분 뒤 결과를 확인해 주세요.');
+                    } else {
+                      setRefreshNote('요청 실패');
+                      alert('요청이 실패했습니다.');
+                    }
+                  } catch (err) {
+                    console.error(err);
+                    alert('요청 중 오류가 발생했습니다.');
+                  } finally {
+                    setRefreshing(false);
+                  }
+                }}
+                disabled={refreshing}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2"
+              >
+                {refreshing ? (
+                  <><span className="animate-spin">🔄</span> 요청 중...</>
+                ) : (
+                  <>🚀 티스토리 로그인/쿠키 갱신 요청</>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default CookieStatusBadge;

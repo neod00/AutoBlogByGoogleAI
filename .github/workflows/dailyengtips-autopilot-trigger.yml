@@ -1,0 +1,17 @@
+name: DailyEngTips AutoPilot Trigger
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'  # Every 2 hours
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  trigger-autopilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger AutoPilot API
+        run: |
+          curl -X POST "https://dailyengtips-admin.vercel.app/api/cron/auto-pilot" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+          -H "Content-Type: application/json"
+
