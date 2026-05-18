@@ -71,7 +71,7 @@ jobs:
           xvfb-run --auto-servernum python PlantGuide/scripts/publish-to-tistory.py \
             --content-file /tmp/blog_output.json \
             --blog-url "$TISTORY_BLOG_URL" \
-            --categories "AI ?�스 & ?�렌??AI 모델 리뷰,?�성??AI,AI 기업 ?�향,기업 AI ?�환(AX),AI ?�책 & ?��?,AI ?�용 가?�드,기�?"
+            --categories "초보 가이드,식물별 키우기,트러블슈팅,분갈이/번식,계절별 관리,인테리어/배치,가성비 원예용품,기타"
 
       - name: Report cookie status
         if: always()
@@ -84,7 +84,7 @@ jobs:
             ERROR=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('error',''))")
             SUCCESS=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('success', False))")
             if [ "$SUCCESS" = "True" ]; then STATUS="valid"; ERROR_MSG="";
-            elif echo "$ERROR" | grep -qiE "로그??login|cookie|쿠키|로딩 ?�패|redirect"; then STATUS="expired"; ERROR_MSG="$ERROR";
+            elif echo "$ERROR" | grep -qiE "로그인|login|cookie|쿠키|로딩 실패|redirect"; then STATUS="expired"; ERROR_MSG="$ERROR";
             else STATUS="valid"; ERROR_MSG=""; fi
           else
             STATUS="unknown"; ERROR_MSG="publish_result.json not found";
@@ -117,4 +117,3 @@ jobs:
               -H "Content-Type: application/json" \
               -d "{\"id\": \"$PUBLISH_ID\", \"status\": \"$STATUS\"}"
           fi
-
