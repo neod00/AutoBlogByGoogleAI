@@ -192,15 +192,15 @@ function getTemplateDirective(template: string): string {
   }
 }
 
-// ── Category classification (aidajigi AI 전문 카테고리) ─────
+// ── Category classification (PlantGuide 식물 카테고리) ─────
 const CATEGORIES = [
-  "AI 뉴스 & 트렌드",
-  "AI 모델 리뷰",
-  "생성형 AI",
-  "AI 기업 동향",
-  "기업 AI 전환(AX)",
-  "AI 정책 & 표준",
-  "AI 활용 가이드",
+  "초보 가이드",
+  "식물별 키우기",
+  "트러블슈팅",
+  "분갈이/번식",
+  "계절별 관리",
+  "인테리어/배치",
+  "가성비 원예용품",
   "기타",
 ];
 
@@ -228,11 +228,11 @@ ${catList}
   }
 }
 
-// ── RSS related posts (aidajigi.tistory.com) ────────────────
+// ── RSS related posts (greenthumb-kr.tistory.com) ────────────────
 async function fetchRelatedPosts(category: string): Promise<{title: string, link: string}[]> {
   try {
     console.error("[generate] Fetching RSS feed for related posts...");
-    const res = await fetch("https://aidajigi.tistory.com/rss");
+    const res = await fetch("https://greenthumb-kr.tistory.com/rss");
     if (!res.ok) return [];
     const xml = await res.text();
     const parser = new XMLParser({ 
@@ -276,7 +276,7 @@ async function main() {
   const dateRangeText = "최신";
 
   const finalPrompt = `
-    Role: You are a professional AI tech blog writer specializing in artificial intelligence trends, models, and applications.
+    Role: You are a friendly Korean plant care blog writer who explains indoor gardening tips in a casual, relatable tone for beginners.
     Task: Write a high-quality blog post based on the User's Request and the following Directives.
     
     User Request:
@@ -389,7 +389,7 @@ async function main() {
     console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
     let ctaHtml = `
 <div style="margin: 3rem 0; padding: 1.5rem; background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-  <h3 style="margin-top: 0; color: #1e40af; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bfdbfe; padding-bottom: 0.5rem; margin-bottom: 1rem;">🤖 AI 인사이트 더 보기</h3>
+  <h3 style="margin-top: 0; color: #1e40af; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bfdbfe; padding-bottom: 0.5rem; margin-bottom: 1rem;">🌱 식물 가이드 더 보기</h3>
   <ul style="list-style-type: none; padding-left: 0; margin: 0;">`;
     
     for (const p of relatedPosts) {

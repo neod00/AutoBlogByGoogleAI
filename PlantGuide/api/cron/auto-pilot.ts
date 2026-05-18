@@ -108,7 +108,8 @@ export default async function handler(req: any, res: any) {
                         topic: pendingTopic.title,
                         template: pendingTopic.template || 'news',
                         recipientEmail: settings.recipientEmail || '',
-                        publish_id: pendingTopic.id
+                        publish_id: pendingTopic.id,
+                        app_url: process.env.APP_URL || ''
                     },
                 }),
             }

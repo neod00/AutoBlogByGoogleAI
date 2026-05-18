@@ -47,7 +47,9 @@ export default async function handler(req: any, res: any) {
           client_payload: {
             topic: topic,
             template: template,
-            publish_id: id || '', // 異뷀썑 ?뱁썒?쇰줈 ?깃났 ?꾨즺 泥섎━ ???ъ슜 媛??            recipientEmail: recipientEmail,
+            publish_id: id || '', // 異뷀썑 ?뱁썒?쇰줈 ?깃났 ?꾨즺 泥섎━ ???ъ슜 媛€??            
+            app_url: process.env.APP_URL || '',
+            recipientEmail: recipientEmail,
           },
         }),
       }
