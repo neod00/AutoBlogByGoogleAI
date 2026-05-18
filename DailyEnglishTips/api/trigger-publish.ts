@@ -1,4 +1,4 @@
-﻿/**
+/**
  * /api/trigger-publish.ts
  * =======================
  * ?대찓??留곹겕 ?대┃ ??GitHub Actions repository_dispatch ?몃━嫄? *
@@ -52,7 +52,7 @@ export default async function handler(req: any, res: any) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          event_type: "aidajigi_publish_post",
+          event_type: "dailyengtips_publish_post",
           client_payload: {
             topic: decodeURIComponent(topic as string),
             template: template as string,
