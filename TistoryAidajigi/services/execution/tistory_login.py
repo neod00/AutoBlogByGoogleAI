@@ -431,9 +431,17 @@ class TistoryAutoLogin:
             # ⑥ 2FA 대기
             self._log(f"⏳ 2단계 인증 대기 중... (카카오톡에서 승인해주세요, 최대 {max_2fa_wait_minutes}분)")
             
+            # 대기 중에는 요소 찾기 지연(10초 대기)을 피하기 위해 임시로 implicit wait를 1초로 축소
+            original_wait = 10
+            self.driver.implicitly_wait(1)
+            
             max_wait = max_2fa_wait_minutes * 60
             for i in range(max_wait):
                 time.sleep(1)
+                
+                # 매 3초마다 2FA '인증완료' 버튼 클릭 시도 (사용자가 카톡에서 '승인' 버튼을 누른 후 브라우저가 넘어가도록 유도)
+                if i > 0 and i % 3 == 0:
+                    self._handle_2fa_completion()
                 
                 # 매 5초마다 OAuth '계속하기' 버튼 체크 및 클릭
                 if i > 0 and i % 5 == 0:
@@ -450,13 +458,17 @@ class TistoryAutoLogin:
                 if self._check_login_status():
                     self._log("✅ 로그인 성공!")
                     self._save_cookies()
+                    # 로그인 완료 후 원래의 10초 대기시간 복원
+                    self.driver.implicitly_wait(original_wait)
                     return True
             
-            # ⑦ 최종 시도: OAuth 동의 화면 처리
+            # ⑦ 최종 시도: 2FA 및 OAuth 처리
+            self._handle_2fa_completion()
             self._handle_oauth_consent()
             time.sleep(3)
             
             # ⑧ 최종 확인
+            self.driver.implicitly_wait(original_wait)
             if self._check_login_status():
                 self._log("✅ 로그인 성공!")
                 self._save_cookies()
@@ -644,6 +656,70 @@ class TistoryAutoLogin:
             """)
         except Exception as e:
             self._log(f"   ⚠️ OAuth 동의 처리 중 무시 가능한 예외 발생: {e}")
+
+    def _handle_2fa_completion(self):
+        """카카오 2단계 인증 화면의 '인증완료' / '확인' 버튼 처리 (무인 2FA 필수)"""
+        try:
+            from selenium.webdriver.common.by import By
+            
+            # 1단계: CSS 셀렉터로 '인증완료' / '확인' 성격의 버튼 스캔
+            selectors = [
+                "button.btn_confirm",
+                "button.btn_g",
+                "button[type='submit']",
+                ".confirm_btn button",
+                ".submit"
+            ]
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for el in elements:
+                        text = el.text.replace(" ", "").strip()
+                        if "인증완료" in text or "확인" in text:
+                            if el.is_displayed() and el.is_enabled():
+                                el.click()
+                                self._log(f"   🚀 2FA '{text}' 버튼 클릭 시도")
+                                time.sleep(1)
+                                self._handle_alert(accept=True) # 알림창 차단
+                                return
+                except Exception:
+                    pass
+
+            # 2단계: XPath 텍스트 매칭 시도
+            keywords = ["인증완료", "인증 완료", "확인"]
+            for kw in keywords:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, f"//button[contains(text(), '{kw}')]")
+                    for el in elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   🚀 2FA XPath Button ({kw}) 클릭 시도")
+                            time.sleep(1)
+                            self._handle_alert(accept=True)
+                            return
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _handle_alert(self, accept: bool = True):
+        """브라우저 alert 팝업 처리 (승인 대기 경고 등 방어)"""
+        try:
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            alert = WebDriverWait(self.driver, 1).until(
+                EC.alert_is_present()
+            )
+            alert_text = alert.text
+            self._log(f"   ⚠️ Alert 팝업 감지: {alert_text[:60]}")
+            if accept:
+                alert.accept()
+            else:
+                alert.dismiss()
+            time.sleep(1)
+        except Exception:
+            pass
 
 
 # =============================================================================
