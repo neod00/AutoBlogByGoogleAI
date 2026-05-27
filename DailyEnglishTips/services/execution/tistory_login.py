@@ -431,9 +431,17 @@ class TistoryAutoLogin:
             # ⑥ 2FA 대기
             self._log(f"⏳ 2단계 인증 대기 중... (카카오톡에서 승인해주세요, 최대 {max_2fa_wait_minutes}분)")
             
+            # 대기 중에는 요소 찾기 지연(10초 대기)을 피하기 위해 임시로 implicit wait를 1초로 축소
+            original_wait = 10
+            self.driver.implicitly_wait(1)
+            
             max_wait = max_2fa_wait_minutes * 60
             for i in range(max_wait):
                 time.sleep(1)
+                
+                # 매 3초마다 2FA '인증완료' 버튼 클릭 시도 (사용자가 카톡에서 '승인' 버튼을 누른 후 브라우저가 넘어가도록 유도)
+                if i > 0 and i % 3 == 0:
+                    self._handle_2fa_completion()
                 
                 # 매 5초마다 OAuth '계속하기' 버튼 체크 및 클릭
                 if i > 0 and i % 5 == 0:
@@ -450,13 +458,17 @@ class TistoryAutoLogin:
                 if self._check_login_status():
                     self._log("✅ 로그인 성공!")
                     self._save_cookies()
+                    # 로그인 완료 후 원래의 10초 대기시간 복원
+                    self.driver.implicitly_wait(original_wait)
                     return True
             
-            # ⑦ 최종 시도: OAuth 동의 화면 처리
+            # ⑦ 최종 시도: 2FA 및 OAuth 처리
+            self._handle_2fa_completion()
             self._handle_oauth_consent()
             time.sleep(3)
             
             # ⑧ 최종 확인
+            self.driver.implicitly_wait(original_wait)
             if self._check_login_status():
                 self._log("✅ 로그인 성공!")
                 self._save_cookies()
@@ -512,6 +524,7 @@ class TistoryAutoLogin:
         except Exception:
             pass
         
+        self is_log = False
         self._log("❌ 카카오 로그인 버튼을 찾을 수 없습니다")
         self._log(f"   현재 URL: {self.driver.current_url}")
         return False
@@ -567,36 +580,147 @@ class TistoryAutoLogin:
         return True
     
     def _handle_oauth_consent(self):
-        """OAuth 동의 화면의 '계속하기' 버튼 처리"""
+        """OAuth 동의 화면의 '계속하기' / '동의하고 계속하기' 버튼 처리"""
         try:
             from selenium.webdriver.common.by import By
             
-            # 정확한 셀렉터
-            try:
-                btn = self.driver.find_element(
-                    By.CSS_SELECTOR,
-                    "button.btn_agree[name='user_oauth_approval'][value='true']"
-                )
-                if btn.is_displayed() and btn.is_enabled():
-                    btn.click()
-                    self._log("   ✅ OAuth '계속하기' 버튼 클릭")
-                    return
-            except Exception:
-                pass
+            # 1단계: 명시적 CSS 셀렉터들 시도
+            selectors = [
+                "button.btn_agree[name='user_oauth_approval'][value='true']",
+                "button.btn_g.btn_confirm",
+                "button.btn_confirm",
+                "button.btn_g",
+                ".confirm_btn button",
+                "button[type='submit']"
+            ]
             
-            # JavaScript fallback
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for el in elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth '{selector}' 버튼 클릭 성공!")
+                            return
+                except Exception:
+                    pass
+
+            # 2단계: XPath 텍스트 매칭 시도
+            xpath_keywords = [
+                "동의하고 계속하기",
+                "동의하고 시작하기",
+                "계속하기",
+                "동의",
+                "계속",
+                "확인"
+            ]
+            
+            for kw in xpath_keywords:
+                try:
+                    # button 태그 매칭
+                    btn_elements = self.driver.find_elements(By.XPATH, f"//button[contains(text(), '{kw}')]")
+                    for el in btn_elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth XPath Button ({kw}) 클릭 성공!")
+                            return
+                            
+                    # a 태그 매칭
+                    a_elements = self.driver.find_elements(By.XPATH, f"//a[contains(text(), '{kw}')]")
+                    for el in a_elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth XPath Anchor ({kw}) 클릭 성공!")
+                            return
+                except Exception:
+                    pass
+
+            # 3단계: JavaScript 포괄적 텍스트 검색 및 클릭 실행 (Fallback)
             self.driver.execute_script("""
-                var buttons = document.querySelectorAll('button');
-                for (var i = 0; i < buttons.length; i++) {
-                    if (buttons[i].textContent.includes('계속하기') || 
-                        buttons[i].textContent.includes('계속')) {
-                        buttons[i].click();
-                        return;
+                var targets = ['동의하고 계속하기', '동의하고 시작하기', '계속하기', '계속', '동의', '확인'];
+                var allEls = document.querySelectorAll('button, a, div, span, input[type="button"]');
+                for (var i = 0; i < allEls.length; i++) {
+                    var text = allEls[i].textContent.trim();
+                    var value = allEls[i].value ? allEls[i].value.trim() : '';
+                    
+                    for (var j = 0; j < targets.length; j++) {
+                        if (text.includes(targets[j]) || value.includes(targets[j])) {
+                            // 부모 요소 중 클릭 불가능한 껍데기인지 필터링
+                            if (allEls[i].click) {
+                                allEls[i].click();
+                                return 'clicked_js_' + targets[j];
+                            }
+                        }
                     }
                 }
+                return 'no_match';
             """)
+        except Exception as e:
+            self._log(f"   ⚠️ OAuth 동의 처리 중 무시 가능한 예외 발생: {e}")
+
+    def _handle_2fa_completion(self):
+        """카카오 2단계 인증 화면의 '인증완료' / '확인' 버튼 처리 (무인 2FA 필수)"""
+        try:
+            from selenium.webdriver.common.by import By
+            
+            # 1단계: CSS 셀렉터로 '인증완료' / '확인' 성격의 버튼 스캔
+            selectors = [
+                "button.btn_confirm",
+                "button.btn_g",
+                "button[type='submit']",
+                ".confirm_btn button",
+                ".submit"
+            ]
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for el in elements:
+                        text = el.text.replace(" ", "").strip()
+                        if "인증완료" in text or "확인" in text:
+                            if el.is_displayed() and el.is_enabled():
+                                el.click()
+                                self._log(f"   🚀 2FA '{text}' 버튼 클릭 시도")
+                                time.sleep(1)
+                                self._handle_alert(accept=True) # 알림창 차단
+                                return
+                except Exception:
+                    pass
+
+            # 2단계: XPath 텍스트 매칭 시도
+            keywords = ["인증완료", "인증 완료", "확인"]
+            for kw in keywords:
+                try:
+                    elements = self.driver.find_elements(By.XPATH, f"//button[contains(text(), '{kw}')]")
+                    for el in elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   🚀 2FA XPath Button ({kw}) 클릭 시도")
+                            time.sleep(1)
+                            self._handle_alert(accept=True)
+                            return
+                except Exception:
+                    pass
         except Exception:
-            pass  # OAuth 동의 화면이 없으면 무시
+            pass
+
+    def _handle_alert(self, accept: bool = True):
+        """브라우저 alert 팝업 처리 (승인 대기 경고 등 방어)"""
+        try:
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+
+            alert = WebDriverWait(self.driver, 1).until(
+                EC.alert_is_present()
+            )
+            alert_text = alert.text
+            self._log(f"   ⚠️ Alert 팝업 감지: {alert_text[:60]}")
+            if accept:
+                alert.accept()
+            else:
+                alert.dismiss()
+            time.sleep(1)
+        except Exception:
+            pass
 
 
 # =============================================================================

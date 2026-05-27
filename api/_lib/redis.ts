@@ -4,10 +4,18 @@ import { Redis } from '@upstash/redis';
 const url = process.env.UPSTASH_REDIS_REST_URL || process.env.STORAGE_REST_URL || process.env.KV_REST_API_URL || process.env.KV_URL;
 const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.STORAGE_REST_TOKEN || process.env.KV_REST_API_TOKEN;
 
-export const redis = new Redis({
+const redisInstance = new Redis({
   url: url || "",
   token: token || "",
 });
+
+const PREFIX = process.env.REDIS_PREFIX || '';
+
+export const redis = {
+    get: async <T>(key: string) => redisInstance.get<T>(PREFIX + key),
+    set: async (key: string, value: any) => redisInstance.set(PREFIX + key, value),
+    del: async (key: string) => redisInstance.del(PREFIX + key),
+};
 
 // 간단한 비밀번호 기반 인증 헬퍼
 export function isAuthenticated(req: any): boolean {
