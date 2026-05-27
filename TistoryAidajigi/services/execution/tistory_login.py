@@ -567,36 +567,83 @@ class TistoryAutoLogin:
         return True
     
     def _handle_oauth_consent(self):
-        """OAuth 동의 화면의 '계속하기' 버튼 처리"""
+        """OAuth 동의 화면의 '계속하기' / '동의하고 계속하기' 버튼 처리"""
         try:
             from selenium.webdriver.common.by import By
             
-            # 정확한 셀렉터
-            try:
-                btn = self.driver.find_element(
-                    By.CSS_SELECTOR,
-                    "button.btn_agree[name='user_oauth_approval'][value='true']"
-                )
-                if btn.is_displayed() and btn.is_enabled():
-                    btn.click()
-                    self._log("   ✅ OAuth '계속하기' 버튼 클릭")
-                    return
-            except Exception:
-                pass
+            # 1단계: 명시적 CSS 셀렉터들 시도
+            selectors = [
+                "button.btn_agree[name='user_oauth_approval'][value='true']",
+                "button.btn_g.btn_confirm",
+                "button.btn_confirm",
+                "button.btn_g",
+                ".confirm_btn button",
+                "button[type='submit']"
+            ]
             
-            # JavaScript fallback
+            for selector in selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    for el in elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth '{selector}' 버튼 클릭 성공!")
+                            return
+                except Exception:
+                    pass
+
+            # 2단계: XPath 텍스트 매칭 시도
+            xpath_keywords = [
+                "동의하고 계속하기",
+                "동의하고 시작하기",
+                "계속하기",
+                "동의",
+                "계속",
+                "확인"
+            ]
+            
+            for kw in xpath_keywords:
+                try:
+                    # button 태그 매칭
+                    btn_elements = self.driver.find_elements(By.XPATH, f"//button[contains(text(), '{kw}')]")
+                    for el in btn_elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth XPath Button ({kw}) 클릭 성공!")
+                            return
+                            
+                    # a 태그 매칭
+                    a_elements = self.driver.find_elements(By.XPATH, f"//a[contains(text(), '{kw}')]")
+                    for el in a_elements:
+                        if el.is_displayed() and el.is_enabled():
+                            el.click()
+                            self._log(f"   ✅ OAuth XPath Anchor ({kw}) 클릭 성공!")
+                            return
+                except Exception:
+                    pass
+
+            # 3단계: JavaScript 포괄적 텍스트 검색 및 클릭 실행 (Fallback)
             self.driver.execute_script("""
-                var buttons = document.querySelectorAll('button');
-                for (var i = 0; i < buttons.length; i++) {
-                    if (buttons[i].textContent.includes('계속하기') || 
-                        buttons[i].textContent.includes('계속')) {
-                        buttons[i].click();
-                        return;
+                var targets = ['동의하고 계속하기', '동의하고 시작하기', '계속하기', '계속', '동의', '확인'];
+                var allEls = document.querySelectorAll('button, a, div, span, input[type="button"]');
+                for (var i = 0; i < allEls.length; i++) {
+                    var text = allEls[i].textContent.trim();
+                    var value = allEls[i].value ? allEls[i].value.trim() : '';
+                    
+                    for (var j = 0; j < targets.length; j++) {
+                        if (text.includes(targets[j]) || value.includes(targets[j])) {
+                            // 부모 요소 중 클릭 불가능한 껍데기인지 필터링
+                            if (allEls[i].click) {
+                                allEls[i].click();
+                                return 'clicked_js_' + targets[j];
+                            }
+                        }
                     }
                 }
+                return 'no_match';
             """)
-        except Exception:
-            pass  # OAuth 동의 화면이 없으면 무시
+        except Exception as e:
+            self._log(f"   ⚠️ OAuth 동의 처리 중 무시 가능한 예외 발생: {e}")
 
 
 # =============================================================================

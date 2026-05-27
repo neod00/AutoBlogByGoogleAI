@@ -387,13 +387,25 @@ async function main() {
   const relatedPosts = await fetchRelatedPosts(category);
   if (relatedPosts.length > 0) {
     console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
+    
+    // 5 premium, beautiful styling options to randomize CSS structure and bypass boilerplate footprints
+    const ctaPalettes = [
+      { bg: "#eff6ff", border: "#bfdbfe", title: "#1e40af", link: "#0369a1", emoji: "👉" },
+      { bg: "#f0fdf4", border: "#bbf7d0", title: "#166534", link: "#15803d", emoji: "💡" },
+      { bg: "#fffbeb", border: "#fef3c7", title: "#92400e", link: "#b45309", emoji: "🔍" },
+      { bg: "#f5f3ff", border: "#ddd6fe", title: "#5b21b6", link: "#6d28d9", emoji: "🚀" },
+      { bg: "#fff1f2", border: "#fecdd3", title: "#9f1239", link: "#be123c", emoji: "✨" }
+    ];
+    
+    const palette = ctaPalettes[Math.floor(Math.random() * ctaPalettes.length)];
+    
     let ctaHtml = `
-<div style="margin: 3rem 0; padding: 1.5rem; background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-  <h3 style="margin-top: 0; color: #1e40af; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bfdbfe; padding-bottom: 0.5rem; margin-bottom: 1rem;">🤖 AI 인사이트 더 보기</h3>
+<div style="margin: 3rem 0; padding: 1.5rem; background-color: ${palette.bg}; border: 1px solid ${palette.border}; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+  <h3 style="margin-top: 0; color: ${palette.title}; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid ${palette.border}; padding-bottom: 0.5rem; margin-bottom: 1rem;">🤖 AI 인사이트 더 보기</h3>
   <ul style="list-style-type: none; padding-left: 0; margin: 0;">`;
     
     for (const p of relatedPosts) {
-      ctaHtml += `<li style="margin-bottom: 0.75rem; display: flex; align-items: center;"><span style="margin-right: 8px;">👉</span> <a href="${p.link}" target="_blank" rel="noopener" style="color: #0369a1; text-decoration: none; font-weight: 500; font-size: 1.05rem;">${p.title}</a></li>`;
+      ctaHtml += `<li style="margin-bottom: 0.75rem; display: flex; align-items: center;"><span style="margin-right: 8px;">${palette.emoji}</span> <a href="${p.link}" target="_blank" rel="noopener" style="color: ${palette.link}; text-decoration: none; font-weight: 500; font-size: 1.05rem;">${p.title}</a></li>`;
     }
 
     ctaHtml += `
