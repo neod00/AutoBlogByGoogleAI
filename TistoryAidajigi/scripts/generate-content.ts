@@ -275,6 +275,15 @@ async function main() {
   const templateDirective = getTemplateDirective(template);
   const dateRangeText = "최신";
 
+  // 도입부/결론 스타일을 스크립트에서 랜덤 지정.
+  // (모델은 이전 글을 기억하지 못해 "랜덤하게 선택하라"는 지시만으로는
+  //  매번 같은 스타일로 수렴함 → 애드센스 boilerplate 판정 위험)
+  const introStyles = ["A (현장 스케치형)", "B (반전 팩트형)", "C (질문 폭탄형)"];
+  const conclusionStyles = ["A (실행 계획형)", "B (핵심 요점 요약형)", "C (실무자 FAQ/Q&A형)"];
+  const introStyle = introStyles[Math.floor(Math.random() * introStyles.length)];
+  const conclusionStyle = conclusionStyles[Math.floor(Math.random() * conclusionStyles.length)];
+  console.error(`[generate] Intro style: ${introStyle}, Conclusion style: ${conclusionStyle}`);
+
   const finalPrompt = `
     Role: You are a professional AI tech blog writer specializing in artificial intelligence trends, models, and applications.
     Task: Write a high-quality blog post based on the User's Request and the following Directives.
@@ -294,6 +303,10 @@ async function main() {
     
     TEMPLATE SPECIFICS:
     ${templateDirective}
+
+    STYLE ASSIGNMENT (이번 글에 반드시 적용):
+    - 이번 글의 도입부 스타일: ${introStyle}
+    - 이번 글의 결론 스타일: ${conclusionStyle}
   `;
 
   console.error("[generate] Calling Gemini API...");
@@ -347,6 +360,12 @@ async function main() {
   post = post.replace(/예상 독서 시간[^.]*\./g, "");
   post = post.replace(/읽기 시간[^.]*\./g, "");
   post = post.replace(/약 \d+분입니다\./g, "");
+
+  // 투자(YMYL) 글: 면책 문구가 빠졌으면 자동 삽입 (애드센스 필수)
+  if (template === "investment" && !/투자.{0,20}(권유|추천이 아|책임)/.test(post)) {
+    console.error("[generate] Investment disclaimer missing — auto-appending");
+    post += `\n<p style="margin-top:2rem;padding:1rem;background:#f8fafc;border-radius:8px;font-size:0.85rem;color:#64748b;">⚠️ 본 글은 산업 동향에 대한 정보 제공을 목적으로 하며, 특정 종목의 매수·매도 추천이 아닙니다. 모든 투자의 책임은 투자자 본인에게 있으며, 투자 결정 전 반드시 전문가와 상담하시기 바랍니다.</p>`;
+  }
 
   // Build reference section from [SOURCES] block only (plain text, no links)
   // NOTE: Gemini grounding URLs (vertexaisearch.cloud.google.com/grounding-api-redirect/...)

@@ -57,6 +57,22 @@ AI_RESIDUE_PATTERNS = [
     r"약\s*\d+분입니다",
 ]
 
+# 허구의 1인칭 경험담/자격 주장 패턴 (E-E-A-T 치명적 — 발견 시 FAIL)
+FABRICATED_CLAIM_PATTERNS = [
+    r"구독자\s*\d+\s*만",                              # "구독자 100만 블로거" 페르소나 누출
+    r"제가\s*아는\s*(어떤\s*|한\s*)?(회사|기업|분|사람|팀장)",  # 허구의 지인 사례
+    r"저의?\s*지인",
+    r"제\s*주변(\s*사례)?",
+    r"제가\s*만나본",
+    r"지난달\s*만난",
+    r"우리\s*(팀|회사)[은는이가]?\s*[^.]{0,30}(했는데|썼는데|줄었)",  # 허구의 소속 경험
+]
+
+# 투자성 콘텐츠 신호 단어 (이 단어들이 많이 등장하면 면책 문구 필수)
+INVESTMENT_SIGNAL_WORDS = ["투자", "매수", "종목", "주가", "수익률", "코스닥", "코스피"]
+INVESTMENT_SIGNAL_THRESHOLD = 5   # 신호 단어 총 등장 횟수 기준
+DISCLAIMER_PATTERN = r"(투자.{0,30}(권유|추천)[가이]?\s*아|책임은\s*투자자)"
+
 # 제목에서 금지된 상대적 시간 표현
 TITLE_TENSE_PATTERNS = [
     r"내년부터",
@@ -333,6 +349,34 @@ def check_ai_residue(report: QualityReport, plain_text: str):
         report.pass_check("AI 생성 잔재", "잔재 없음")
 
 
+def check_fabricated_claims(report: QualityReport, plain_text: str):
+    """허구의 1인칭 경험담/자격 주장 감지 (E-E-A-T 치명적)"""
+    found = []
+    for pattern in FABRICATED_CLAIM_PATTERNS:
+        m = re.search(pattern, plain_text)
+        if m:
+            found.append(m.group(0))
+
+    if found:
+        report.fail_check("허구 주장 감지", f"발견: {', '.join(found[:3])} — 검증 불가능한 경험담/자격 주장은 애드센스 감점 요인")
+    else:
+        report.pass_check("허구 주장 감지", "허구 경험담/자격 주장 없음")
+
+
+def check_investment_disclaimer(report: QualityReport, plain_text: str):
+    """투자성 콘텐츠(YMYL)에 면책 문구가 있는지 검사"""
+    signal_count = sum(plain_text.count(w) for w in INVESTMENT_SIGNAL_WORDS)
+
+    if signal_count < INVESTMENT_SIGNAL_THRESHOLD:
+        report.pass_check("투자 면책 문구", f"투자성 콘텐츠 아님 (신호 단어 {signal_count}회)")
+        return
+
+    if re.search(DISCLAIMER_PATTERN, plain_text):
+        report.pass_check("투자 면책 문구", f"투자성 콘텐츠 (신호 {signal_count}회) — 면책 문구 포함됨")
+    else:
+        report.fail_check("투자 면책 문구", f"투자성 콘텐츠 (신호 {signal_count}회)인데 면책 문구 없음 — YMYL 정책 위반 위험")
+
+
 def check_banned_expressions(report: QualityReport, plain_text: str):
     """금지 표현 검사 (blog_instructions.md 기준)"""
     found = [expr for expr in BANNED_EXPRESSIONS if expr in plain_text]
@@ -388,6 +432,8 @@ def main():
     check_paragraph_length(report, html)
     check_ai_residue(report, plain_text)
     check_banned_expressions(report, plain_text)
+    check_fabricated_claims(report, plain_text)
+    check_investment_disclaimer(report, plain_text)
 
     # 리포트 출력
     report.print_report()
