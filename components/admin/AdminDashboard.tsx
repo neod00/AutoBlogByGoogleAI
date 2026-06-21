@@ -517,7 +517,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                         <h3 className="font-bold text-slate-800 dark:text-white">오토 파일럿 (완전 자동화)</h3>
                       </div>
                       <p className="text-sm text-slate-500 dark:text-slate-400">
-                        발굴된 키워드를 사람이 승인하지 않아도, AI가 최적의 시간에 랜덤하게(이틀에 1~2개 꼴) 자동 발행합니다.
+                        발굴된 키워드를 사람이 승인하지 않아도, AI가 한국 시간 낮/저녁에 이틀 1개 꼴로 자동 발행합니다.
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -550,15 +550,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                 <div>
                   <label className="block text-sm font-semibold mb-2">🔍 SEO 시드 키워드 (핵심 설정)</label>
                   <p className="text-xs text-slate-400 mb-2">
-                    쉼표로 여러 개 입력 · 이 키워드를 기반으로 AI가 매일 트렌딩 롱테일 키워드를 발굴합니다
+                    쉼표로 여러 개 입력 · 비워두면 기후인사이트 기본 시드(CBAM, ESG 공시, Scope 3 등)를 사용합니다
                   </p>
                   <input
                     type="text"
                     value={settings.dailyTopic || ''}
                     onChange={e => setSettings({...settings, dailyTopic: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
-                    placeholder="예: 미국주식, AI, 부동산, 반도체"
+                    placeholder="예: CBAM 전환기간, ESG 공시 대상 기업, Scope 3 배출량 산정"
                   />
+                  <p className="mt-2 text-xs text-slate-400">
+                    비용 보호: 자동 발굴은 대기열이 부족할 때만 실행되며, 기본값은 1회 최대 2개 시드·최대 4회 Gemini 호출입니다.
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(settings.dailyTopic || '').split(',').filter(s => s.trim()).map((seed, i) => (
                       <span key={i} className="px-3 py-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-full text-xs font-semibold">

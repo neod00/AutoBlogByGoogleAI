@@ -1,12 +1,11 @@
-name: Auto Blog Publish
+name: Climate Insight Auto Blog Publish
 
 on:
   repository_dispatch:
     types: [publish_post]
 
-# Prevent concurrent runs
 concurrency:
-  group: auto-publish
+  group: climate-insight-auto-publish
   cancel-in-progress: false
 
 env:
@@ -20,10 +19,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # 1. Checkout code
       - uses: actions/checkout@v4
 
-      # 2. Setup Node.js (for blog generation)
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -31,7 +28,6 @@ jobs:
 
       - run: npm ci
 
-      # 3. Setup Python (for Tistory publishing)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -40,19 +36,16 @@ jobs:
         run: |
           pip install selenium webdriver-manager python-dotenv
 
-      # 4. Install Chrome Dependencies and Xvfb
-      - name: Install Dependencies
+      - name: Install Chrome dependencies and Xvfb
         run: |
           sudo apt-get update
           sudo apt-get install -y libnss3 libxss1 libasound2t64 libatk-bridge2.0-0t64 libgtk-3-0 libgbm1 libdrm2 xvfb
 
-      # 5. Restore Tistory cookies
-      - name: Restore cookies
+      - name: Restore Tistory cookies
         run: |
           mkdir -p ~/.tistory_login/cookies
           echo "${{ secrets.TISTORY_COOKIES_B64 }}" | base64 -d > ~/.tistory_login/cookies/default_cookies.pkl
 
-      # 6. Generate blog post
       - name: Generate blog content
         id: generate
         env:
@@ -61,15 +54,53 @@ jobs:
           PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
           PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'review' }}
         run: |
-          echo "Generating blog post for: $PUBLISH_TOPIC"
+          echo "Generating Climate Insight blog post for: $PUBLISH_TOPIC"
           npx tsx scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
           cat /tmp/blog_output.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Title: {d.get(\"title\",\"?\")[:60]}')"
 
-      # 7. Publish to Tistory
+      - name: Quality gate
+        env:
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
+        run: |
+          if ! python scripts/quality_gate.py \
+            --content-file /tmp/blog_output.json \
+            --topic "$PUBLISH_TOPIC"; then
+            python3 - <<'PY'
+          import json
+
+          with open("/tmp/blog_output.json", "r", encoding="utf-8") as f:
+              blog = json.load(f)
+
+          try:
+              with open("/tmp/quality_gate_result.json", "r", encoding="utf-8") as f:
+                  qg = json.load(f)
+              failed = [
+                  f"{d.get('name')}: {d.get('detail')}"
+                  for d in qg.get("details", [])
+                  if d.get("icon") == "❌"
+              ]
+              error = "Quality gate failed" + (": " + " | ".join(failed[:3]) if failed else "")
+          except Exception:
+              error = "Quality gate failed"
+
+          with open("/tmp/publish_result.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "success": False,
+                  "url": "",
+                  "error": error,
+                  "title": blog.get("title", "Unknown"),
+                  "category": blog.get("category", "Unknown"),
+              }, f, ensure_ascii=False, indent=2)
+          PY
+            exit 1
+          fi
+
       - name: Publish to Tistory
         id: publish
         env:
           TISTORY_BLOG_URL: https://climate-insight.tistory.com
+          TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
+          TISTORY_KAKAO_PW: ${{ secrets.TISTORY_KAKAO_PW }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           xvfb-run --auto-servernum python scripts/publish-to-tistory.py \
@@ -77,17 +108,15 @@ jobs:
             --blog-url "$TISTORY_BLOG_URL" \
             --categories "카테고리 없음,ai 신기술 및 이슈,기후변화 이슈,정책과 제도,기후금융,국제협력,과학과 기술,탄소중립,기타"
 
-      # 7.1 Debug Chromedriver on failure
-      - name: Show Chromedriver Logs
+      - name: Show Chromedriver logs
         if: failure()
         run: cat /tmp/chromedriver.log || echo "No chromedriver log found"
 
-      # 7.2 Report cookie status to Admin Dashboard
       - name: Report cookie status
         if: always()
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          APP_URL: https://auto-blog-by-google-ai.vercel.app
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://auto-blog-by-google-ai.vercel.app' }}
         run: |
           if [ -f /tmp/publish_result.json ]; then
             ERROR=$(python3 -c "import json; r=json.load(open('/tmp/publish_result.json')); print(r.get('error',''))")
@@ -96,7 +125,7 @@ jobs:
             if [ "$SUCCESS" = "True" ]; then
               STATUS="valid"
               ERROR_MSG=""
-            elif echo "$ERROR" | grep -qiE "로그인|login|cookie|쿠키|로딩 실패|redirect"; then
+            elif echo "$ERROR" | grep -qiE "로그인|login|cookie|쿠키|로딩 실패|redirect|인증|카카오"; then
               STATUS="expired"
               ERROR_MSG="$ERROR"
             else
@@ -114,7 +143,6 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"status\": \"$STATUS\", \"error\": \"$ERROR_MSG\"}" || echo "Warning: Failed to report cookie status"
 
-      # 8. Send result email
       - name: Send notification email
         if: always()
         env:
@@ -124,12 +152,11 @@ jobs:
         run: |
           npx tsx scripts/send-result-email.ts
 
-      # 9. Update Vercel Topic Status
       - name: Update topic status
         if: always()
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          APP_URL: https://auto-blog-by-google-ai.vercel.app
+          APP_URL: ${{ github.event.client_payload.app_url || 'https://auto-blog-by-google-ai.vercel.app' }}
           PUBLISH_ID: ${{ github.event.client_payload.publish_id }}
         run: |
           if [ -n "$PUBLISH_ID" ]; then
@@ -138,7 +165,7 @@ jobs:
             else
               STATUS="failed"
             fi
-            
+
             echo "Updating Vercel topic ($PUBLISH_ID) status to: $STATUS"
             curl -s -X PUT "$APP_URL/api/admin/topics" \
               -H "Authorization: Bearer $ADMIN_PASSWORD" \

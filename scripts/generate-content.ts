@@ -228,7 +228,17 @@ ${catList}
 }
 
 // ── RSS related posts ──────────────────────────────────────────────
-async function fetchRelatedPosts(category: string): Promise<{title: string, link: string}[]> {
+function tokenizeForRelatedPosts(text: string): string[] {
+  const stopwords = new Set(["2026", "2025", "최신", "정리", "가이드", "방법", "이유", "전망"]);
+  return text
+    .toLowerCase()
+    .split(/[\s,·:()［］\[\]\-—|!?'"“”‘’<>/]+/u)
+    .map(t => t.trim())
+    .filter(t => t.length >= 2 && !stopwords.has(t))
+    .slice(0, 20);
+}
+
+async function fetchRelatedPosts(category: string, currentTitle: string): Promise<{title: string, link: string}[]> {
   try {
     console.error("[generate] Fetching RSS feed for related posts...");
     const res = await fetch("https://climate-insight.tistory.com/rss");
@@ -246,14 +256,37 @@ async function fetchRelatedPosts(category: string): Promise<{title: string, link
     const arr = Array.isArray(items) ? items : [items];
     if (arr.length === 0) return [];
     
-    // Sort logic: pick items containing same category keywords, fallback to recent
-    // For simplicity, here we just pick the latest 3 items as related internal links
-    const topItems = arr.slice(0, 3).map((i: any) => ({
-      title: i.title || "",
-      link: i.link || ""
-    }));
+    const tokens = new Set([
+      ...tokenizeForRelatedPosts(category),
+      ...tokenizeForRelatedPosts(currentTitle),
+    ]);
 
-    return topItems;
+    const scored = arr
+      .map((i: any, idx: number) => {
+        const itemTitle = i.title || "";
+        const lowerTitle = itemTitle.toLowerCase();
+        let score = 0;
+        for (const token of tokens) {
+          if (lowerTitle.includes(token)) score += 1;
+        }
+        if (itemTitle === currentTitle) score -= 100;
+        return {
+          title: itemTitle,
+          link: i.link || "",
+          score,
+          idx,
+        };
+      })
+      .filter((i: any) => i.title && i.link)
+      .sort((a: any, b: any) => b.score - a.score || a.idx - b.idx);
+
+    const related = scored.filter((i: any) => i.score > 0).slice(0, 3);
+    const fallback = scored.slice(0, 3);
+
+    return (related.length > 0 ? related : fallback).map((i: any) => ({
+      title: i.title,
+      link: i.link,
+    }));
   } catch (error) {
     console.error("[generate] RSS fetch failed:", error);
     return [];
@@ -343,19 +376,21 @@ async function main() {
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
   const groundingUrls = (groundingMetadata?.groundingChunks || [])
     .map((c: any) => ({ url: c?.web?.uri || "", domain: c?.web?.title || "" }))
-    .filter((u: any) => u.url);
+    .filter((u: any) => u.url)
+    .slice(0, 5);
 
   const sourceTitles = sourcesMatch
     ? sourcesMatch[1].trim().split("\n").map(s => s.trim()).filter(Boolean)
     : [];
+  const limitedSourceTitles = sourceTitles.slice(0, 5);
 
-  if (sourceTitles.length > 0 || groundingUrls.length > 0) {
+  if (limitedSourceTitles.length > 0 || groundingUrls.length > 0) {
     let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;">';
     refHtml += '<details style="cursor:pointer;"><summary style="font-size:1.1rem;font-weight:bold;color:#475569;">📚 본문 출처 및 참고자료 (클릭하여 펼치기)</summary>';
     refHtml += '<ul style="list-style:disc;padding-left:1.5rem;margin-top:1rem;font-size:0.9rem;color:#64748b;">';
     const usedUrls = new Set<string>();
 
-    for (const st of sourceTitles) {
+    for (const st of limitedSourceTitles) {
       let matchedUrl = "";
       for (const g of groundingUrls) {
         if (!usedUrls.has(g.url)) {
@@ -383,12 +418,12 @@ async function main() {
   console.error(`[generate] Category: ${category}`);
 
   // ── Inject related internal links (CTA) ──
-  const relatedPosts = await fetchRelatedPosts(category);
+  const relatedPosts = await fetchRelatedPosts(category, title);
   if (relatedPosts.length > 0) {
     console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
     let ctaHtml = `
 <div style="margin: 3rem 0; padding: 1.5rem; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-  <h3 style="margin-top: 0; color: #166534; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bbf7d0; padding-bottom: 0.5rem; margin-bottom: 1rem;">🌟 이 블로그의 다른 핵심 인사이트 보러가기</h3>
+  <h3 style="margin-top: 0; color: #166534; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #bbf7d0; padding-bottom: 0.5rem; margin-bottom: 1rem;">🌟 함께 읽으면 좋은 기후인사이트 글</h3>
   <ul style="list-style-type: none; padding-left: 0; margin: 0;">`;
     
     for (const p of relatedPosts) {

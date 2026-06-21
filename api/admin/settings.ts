@@ -1,4 +1,5 @@
 import { redis, isAuthenticated } from '../_lib/redis.js';
+import { DEFAULT_DAILY_TOPIC } from '../_lib/climateSeeds.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -18,7 +19,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ 
         settings: {
           recipientEmail: settings.recipientEmail || process.env.GMAIL_USER || '',
-          dailyTopic: settings.dailyTopic || process.env.DAILY_TOPIC || 'AI Trends',
+          dailyTopic: settings.dailyTopic || process.env.DAILY_TOPIC || DEFAULT_DAILY_TOPIC,
           blogUrl: settings.blogUrl || 'https://climate-insight.tistory.com',
           ...settings
         }

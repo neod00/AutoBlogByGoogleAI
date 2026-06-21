@@ -1,42 +1,122 @@
 # SEO 키워드 발굴 파이프라인
 
 ## 개요
-매일 크론(23:00 UTC)이 실행되면 Gemini + Google Search Grounding을 사용하여 `admin:settings`의 `dailyTopic` 시드 키워드로부터 SEO 최적화된 롱테일 키워드를 자동 발굴합니다.
 
-## 파이프라인 흐름
+기후인사이트는 사용자가 매번 키워드를 직접 넣지 않아도, 블로그 성격에 맞는 기본 시드 풀을 바탕으로 SEO 롱테일 키워드를 자동 발굴한다. 다만 Gemini 호출 비용을 통제하기 위해 큐가 충분할 때는 발굴을 생략하고, 한 번에 처리하는 시드 수를 작게 유지한다.
 
+## 기본 흐름
+
+```text
+기본/사용자 시드 키워드
+  -> Gemini + Google Search로 최신 이슈 확인
+  -> Gemini로 SEO 롱테일 후보 생성
+  -> 중복 후보 제거
+  -> admin:discovered_keywords 저장
+  -> admin:topics_queue에 일부 자동 추가
+  -> 이메일 리포트 발송
 ```
-시드 키워드 (설정) → Gemini SEO 분석 → 발굴 키워드 Redis 저장 → 이메일 리포트 발송
-                                         ↓
-                              어드민 대시보드 인박스
-                                         ↓
-                              사람이 검토 → 승인 → 발행 큐 추가 → 발행
-```
 
-## 핵심 파일
+오토파일럿은 2시간마다 발행 여부만 판단한다. 오토파일럿 실행 시점에는 Gemini를 새로 호출하지 않고, 이미 채워진 `admin:topics_queue`의 pending 주제만 사용한다.
+
+## 관련 파일
 
 | 파일 | 역할 |
-|------|------|
-| `api/admin/discover-keywords.ts` | 온디맨드 키워드 발굴 API (GET/POST/PUT/DELETE) |
-| `api/cron/daily-digest.ts` | 매일 자동 실행 크론 (SEO 키워드 발굴 + 이메일) |
-| `components/admin/KeywordDiscovery.tsx` | 어드민 키워드 인박스 UI |
-| `components/admin/AdminDashboard.tsx` | 탭 기반 어드민 대시보드 (키워드/큐/설정) |
+| --- | --- |
+| `api/_lib/climateSeeds.ts` | 기후인사이트 기본 시드 풀과 시드 선택 로직 |
+| `api/admin/discover-keywords.ts` | 관리자 화면의 수동 키워드 발굴 API |
+| `api/admin/recommend-seeds.ts` | 기후인사이트 성격에 맞는 시드 추천 API |
+| `api/cron/daily-digest.ts` | 자동 키워드 발굴/이메일 리포트 크론 |
+| `api/cron/auto-pilot.ts` | 발행 대기열 기반 자동 발행 트리거 |
+| `components/admin/KeywordDiscovery.tsx` | 관리자 키워드 발굴 화면 |
+| `components/admin/AdminDashboard.tsx` | 시드 설정, 추천 시드, 오토파일럿 설정 화면 |
 
 ## Redis 키
 
-- `admin:discovered_keywords` — 발굴된 키워드 배열 (최대 30개 보관)
-- `admin:topics_queue` — 발행 대기열 (기존)
-- `admin:settings` — 전역 설정 (dailyTopic, recipientEmail 등)
+- `admin:settings`: 관리자 설정. `dailyTopic`, `recipientEmail`, `autoPilot` 등을 저장한다.
+- `admin:discovered_keywords`: 발굴된 키워드 후보를 최대 30개 보관한다.
+- `admin:topics_queue`: 발행 대기열. 자동 발행은 이 큐의 `pending` 항목만 사용한다.
 
-## Gemini 프롬프트 전략
+## 기본 시드 정책
 
-1. **30년차 SEO 전문가 페르소나** 부여
-2. **롱테일 정보탐색형 키워드**만 추출 (가십/날씨 제외)
-3. **구조화된 JSON 출력**: mainKeyword, subKeywords, suggestedTitle, hookSummary, searchIntent, difficulty, template, reasoning
-4. **Google Search Grounding** 활성화로 실시간 트렌드 반영
+`admin:settings.dailyTopic` 또는 `DAILY_TOPIC`이 비어 있으면 `api/_lib/climateSeeds.ts`의 `CLIMATE_INSIGHT_DEFAULT_SEEDS`를 사용한다.
 
-## 주의사항
+기본 시드는 다음 범주를 우선한다.
 
-- Gemini API 호출 비용이 발생하므로 "지금 발굴하기" 버튼 남용 주의
-- 경쟁도(difficulty)는 AI의 추정치이며 절대적 수치가 아님
-- Thin Content 방지를 위해 승인 프로세스(Human-in-the-loop) 반드시 유지
+- CBAM, EU 탄소규제, 수출기업 대응
+- ESG 공시, ISSB, 공급망 실사
+- Scope 1/2/3, 온실가스 인벤토리
+- RE100, PPA, 재생에너지 조달
+- 배출권거래제, 탄소중립 설비 투자
+- 전기요금, 에너지 효율, 중소기업 지원사업
+- 폐배터리, 전기차 배터리 정보 공개, 기후기술
+- 기후금융, 녹색채권, K-택소노미
+
+## Gemini 비용 보호 기준
+
+기본값은 비용 부담을 줄이는 쪽으로 잡는다.
+
+- `KEYWORD_MAX_SEEDS_PER_RUN`: 자동/수동 발굴 1회당 처리할 최대 시드 수. 기본값 `2`.
+- `KEYWORD_MAX_QUEUE_ADD`: 자동 발굴 1회당 발행 대기열에 넣을 최대 글감 수. 기본값 `3`.
+- `KEYWORD_MIN_PENDING_TOPICS`: pending 큐가 이 개수 이상이면 자동 발굴을 생략한다. 기본값 `4`.
+- 한 시드는 Gemini 2회 호출을 사용한다.
+  - 1회: Google Search Grounding으로 최신 사실 확인
+  - 1회: 확인된 사실 기반 SEO 후보 JSON 생성
+- 따라서 기본 자동 발굴 1회 예상 Gemini 호출 수는 최대 `4회`다.
+
+운영 원칙:
+
+- pending 큐가 4개 이상이면 `daily-digest`는 Gemini를 호출하지 않는다.
+- pending 큐가 부족할 때만 하루 크론에서 새 키워드를 보충한다.
+- 오토파일럿은 발행만 담당하고, 빈 큐를 이유로 즉석 키워드 발굴을 실행하지 않는다.
+- 수동 발굴 버튼도 동일하게 기본 최대 2개 시드만 처리한다.
+
+## 키워드 선정 기준
+
+발굴 후보는 단순 검색량보다 기후인사이트의 전문성과 독자 의도를 우선한다.
+
+우선 선정:
+
+- 정책/규제 일정, 대상 기업, 지원금, 체크리스트, 비교, 확인 방법이 붙는 롱테일 키워드
+- 공식 기관, 정부, 국제기구, 기업 공시, 신뢰 가능한 전문 매체로 검증 가능한 주제
+- 독자가 읽은 뒤 바로 확인하거나 행동할 수 있는 실무형 주제
+- 기존 발행 대기열 또는 최근 발행 주제와 중복되지 않는 주제
+
+제외 또는 보류:
+
+- 블로그 정체성과 무관한 일반 트래픽성 키워드
+- 연예, 생활 잡담, 정치 공방, 공포 마케팅성 표현
+- 공식 근거 없이 커뮤니티나 블로그에서만 확산되는 주제
+- "충격", "대박", "지금 당장"처럼 클릭베이트에 기대는 제목
+- 최근 큐나 발행 글과 거의 같은 주제
+
+## 제목 생성 기준
+
+- 검색어는 제목 앞부분에 자연스럽게 배치한다.
+- 제목은 34~58자 내외를 목표로 한다.
+- 연도는 최신 정책/규제/일정 변화가 검색 의도에 중요한 경우에만 사용한다.
+- "모든 것", "총정리", "완벽 가이드" 같은 포괄 제목을 남발하지 않는다.
+- 좋은 제목은 `검색어 + 독자 상황 + 숫자/행동`을 포함한다.
+
+예시:
+
+- Bad: `2026년 ESG 공시의 모든 것`
+- Good: `ESG 공시 대상 기업 확인법, 담당자가 먼저 볼 5가지`
+- Bad: `전기차 화재 공포와 안전 진화`
+- Good: `전기차 배터리 정보 공개, 내 차 확인 전 볼 5가지`
+
+## 발행 전 체크
+
+발굴 후보를 발행 대기열에 넣기 전 다음 조건을 확인한다.
+
+- `searchIntent`가 명확한 질문 또는 문제 해결형 의도인가?
+- `suggestedTitle`이 핵심 검색어를 앞부분에 포함하는가?
+- `reasoning`이 공식 근거 또는 검증 가능한 자료 유형을 언급하는가?
+- 독자가 "그래서 내가 무엇을 확인해야 하는가"를 얻을 수 있는가?
+- 최근 30일 안에 거의 같은 주제를 발행하지 않았는가?
+
+## 운영 주의사항
+
+- Gemini 호출 비용이 발생하므로 크론과 수동 버튼 사용 빈도를 관리한다.
+- 자동 발굴 결과의 난이도(`difficulty`)는 AI 추정치이므로 절대 지표가 아니다.
+- 품질 저하를 막기 위해 자동 발행 전 `scripts/quality_gate.py`를 통과해야 한다.
+- 비용이 부담되면 `KEYWORD_MAX_SEEDS_PER_RUN=1`, `KEYWORD_MIN_PENDING_TOPICS=6`처럼 더 보수적으로 설정한다.

@@ -1,19 +1,30 @@
 import { GoogleGenAI } from "@google/genai";
 import { isAuthenticated } from '../_lib/redis.js';
+import { CLIMATE_INSIGHT_DEFAULT_SEEDS } from '../_lib/climateSeeds.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 
-// 블로그 카테고리 목록 (generate-content.ts와 동기화)
-const BLOG_CATEGORIES = [
-  "ai 신기술 및 이슈",
-  "기후변화 이슈",
-  "정책과 제도",
-  "기후금융",
-  "국제협력",
-  "과학과 기술",
-  "탄소중립",
-  "기타",
+const CLIMATE_INSIGHT_CATEGORIES = [
+  '기후정책과 제도',
+  '탄소중립과 배출권',
+  'ESG 공시와 공급망 실사',
+  '재생에너지와 전력시장',
+  '기후금융과 녹색투자',
+  '수출기업 탄소규제',
+  '중소기업 지원사업',
+  '기후기술과 산업 전환',
 ];
+
+function parseRecommendations(text: string): any[] {
+  const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const parsed = JSON.parse(cleanText);
+  if (!Array.isArray(parsed)) {
+    throw new Error('Gemini response is not a JSON array');
+  }
+  return parsed
+    .filter(item => item && typeof item.keyword === 'string')
+    .slice(0, 10);
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -33,39 +44,49 @@ export default async function handler(req: any, res: any) {
   try {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-    const currentSeeds = req.body?.currentSeeds || '';
+    const currentSeeds = req.body?.currentSeeds || CLIMATE_INSIGHT_DEFAULT_SEEDS.join(', ');
 
-    const prompt = `오늘은 ${today} 입니다. 당신은 한국 최고의 SEO 전문가이자, 월 1000만원 수익을 내는 전문 블로거입니다.
+    const prompt = `오늘은 ${today}입니다.
+당신은 기후인사이트 블로그의 SEO 편집장입니다.
 
-아래는 내 블로그의 카테고리 목록입니다:
-${BLOG_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+블로그 정체성:
+- 한국 독자에게 기후정책, ESG 공시, 탄소중립, 에너지 비용, 수출 탄소규제, 기업 실무 대응을 쉽게 설명합니다.
+- 단순 화제성, 연예/생활 잡담, 정치 공방, 공포 마케팅, 블로그 주제와 무관한 트래픽성 키워드는 제외합니다.
 
-${currentSeeds ? `현재 설정된 시드 키워드: ${currentSeeds}` : '현재 설정된 시드 키워드가 없습니다.'}
+핵심 카테고리:
+${CLIMATE_INSIGHT_CATEGORIES.map((category, index) => `${index + 1}. ${category}`).join('\n')}
 
-임무: 구글 검색을 통해 위 카테고리들과 관련하여 지금 한국에서 가장 검색량이 높거나 급상승 중인 SEO 시드 키워드를 추천하세요.
+현재 설정된 시드 키워드:
+${currentSeeds}
+
+기본 시드 풀 참고:
+${CLIMATE_INSIGHT_DEFAULT_SEEDS.join(', ')}
+
+임무:
+Google Search 결과를 바탕으로 지금 기후인사이트에 추가하면 좋은 SEO 시드 키워드 8~10개를 추천하세요.
 
 추천 기준:
-1. 전문 카테고리(1~7번): 최근 1주일 이내 급상승 중이거나 지속적으로 검색량이 높은 전문 키워드.
-2. "기타" 카테고리(트래픽 유도용): 블로그 메인 주제(AI/기후)와 완전히 분리된 일반 대중의 관심사(생활 꿀팁, 재테크, 실생활 핫이슈, 문화 등)로만 구성하세요.
-3. 이미 설정된 시드 키워드와 중복되지 않는 새로운 키워드
-4. 블로그 글로 작성하기 좋은 정보탐색형 키워드 (너무 넓거나 모호하지 않을 것)
+1. 최근 6~12개월 안에 검색 수요나 정책/산업 변화가 확인되는 주제
+2. 향후 여러 개의 롱테일 글감으로 확장 가능한 2~5단어 시드
+3. 기존 시드와 완전히 중복되지 않는 주제
+4. 기업 실무자, 수출기업, 중소기업, ESG 담당자, 에너지 비용에 관심 있는 독자가 검색할 만한 표현
+5. 기후인사이트의 신뢰도를 해칠 수 있는 자극적 표현은 제외
 
 STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 [
   {
-    "keyword": "추천 시드 키워드 (2~5단어, 한글)",
-    "category": "해당 카테고리명",
-    "reason": "왜 이 키워드가 지금 좋은지 한 줄 설명 (한글)",
+    "keyword": "추천 시드 키워드",
+    "category": "해당 카테고리",
+    "reason": "왜 지금 좋은 시드인지 한 문장 설명",
     "trend": "one of: 급상승, 꾸준히높음, 계절성"
   }
 ]
 
 IMPORTANT:
-- 총 10개 내외의 키워드를 추천하세요.
-- 전체 추천 키워드 중 **반드시 2~3개는 "기타" 카테고리로 할당**하여, 일반 대중이 검색할 만한 범용적인 핫이슈를 포함시킬 것.
 - Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
-- 모든 내용은 한글로 작성하세요.
-- 과거 학습 데이터에 의존하지 말고, 반드시 구글 검색 결과를 기반으로 추천하세요.`;
+- 모든 내용은 한국어로 작성합니다.
+- "기타", "일상", "잡담", "화제성 뉴스" 성격의 추천은 만들지 않습니다.
+- 검색 결과에서 근거가 약한 키워드는 추천하지 않습니다.`;
 
     console.log('[recommend-seeds] Calling Gemini with Google Search...');
     const response = await ai.models.generateContent({
@@ -74,17 +95,8 @@ IMPORTANT:
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text || "";
-    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
-    try {
-      const recommendations = JSON.parse(cleanText);
-      return res.status(200).json({ recommendations });
-    } catch (parseError) {
-      console.error('[recommend-seeds] JSON parse error:', parseError);
-      console.error('[recommend-seeds] Raw text:', text);
-      return res.status(500).json({ error: 'AI 응답 파싱 실패. 다시 시도해주세요.' });
-    }
+    const recommendations = parseRecommendations(response.text || "");
+    return res.status(200).json({ recommendations });
   } catch (error: any) {
     console.error('[recommend-seeds] Error:', error.message);
     return res.status(500).json({ error: error.message });

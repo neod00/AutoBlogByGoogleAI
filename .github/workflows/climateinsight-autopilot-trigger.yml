@@ -1,0 +1,16 @@
+name: Climate Insight AutoPilot Trigger
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  trigger-autopilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Climate Insight AutoPilot API
+        run: |
+          curl -sS -X POST "https://auto-blog-by-google-ai.vercel.app/api/cron/auto-pilot" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json"

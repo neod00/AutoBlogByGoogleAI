@@ -14,7 +14,25 @@ export default async function handler(req: any, res: any) {
 
     console.log('[AutoPilot] Starting check...');
 
+    // Active hours check (KST 09:00 ~ 23:59 only).
+    // This keeps KakaoTalk 2FA requests out of overnight hours.
+    const nowKST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const hourKST = nowKST.getHours();
+    if (hourKST < 9 || hourKST >= 24) {
+        console.log(`[AutoPilot] Outside active hours (KST ${hourKST}:00). Skipping to avoid nighttime KakaoTalk alerts.`);
+        return res.status(200).json({
+            message: 'Outside active hours (KST 09:00-23:59)',
+            currentHourKST: hourKST,
+        });
+    }
+    console.log(`[AutoPilot] Active hours OK (KST ${hourKST}:00)`);
+
     try {
+        // Log cookie state for observability. Publishing still proceeds because
+        // the Selenium publisher can refresh login and request Kakao approval.
+        const cookieStatus = await redis.get<any>('admin:cookie_status') || {};
+        console.log(`[AutoPilot] Cookie status: ${cookieStatus.status || 'not set'}; proceeding if publish probability passes.`);
+
         // 2. Load Settings
         const settings = await redis.get<any>('admin:settings') || {};
         const isAutoPilotEnabled = settings.autoPilot === true;
@@ -32,21 +50,18 @@ export default async function handler(req: any, res: any) {
 
         console.log(`[AutoPilot] Hours since last run: ${hoursSinceLastRun.toFixed(2)}`);
 
-        // 4. Probability Logic (Targeting ~0.75 posts/day)
-        // We run this every 2 hours (12 times/day).
-        // To get 0.75 posts/day, total probability per day should be 0.75.
-        // Per run probability = 0.75 / 12 = 0.0625 (6.25%)
-        
-        let probability = 0.06; // Default low probability for "random" feel
+        // 4. Probability Logic
+        // Target: roughly 1 post every 2 days, with a forced attempt after 48h.
+        let probability = 0.01;
 
-        if (hoursSinceLastRun < 12) {
-            probability = 0.01; // Very low if recently posted
-        } else if (hoursSinceLastRun > 48) {
-            probability = 1.0;  // Force post if more than 2 days passed
+        if (hoursSinceLastRun > 48) {
+            probability = 1.0;
         } else if (hoursSinceLastRun > 36) {
-            probability = 0.5;  // High chance if 1.5 days passed
+            probability = 0.25;
         } else if (hoursSinceLastRun > 24) {
-            probability = 0.2;  // Decent chance if 1 day passed
+            probability = 0.10;
+        } else if (hoursSinceLastRun > 12) {
+            probability = 0.05;
         }
 
         const roll = Math.random();
@@ -67,9 +82,9 @@ export default async function handler(req: any, res: any) {
         const pendingTopic = topics.find(t => t.status === 'pending');
 
         if (!pendingTopic) {
-            console.log('[AutoPilot] No pending topics in queue. Discovery needed?');
-            // Optional: Could trigger discovery here if empty, 
-            // but daily-digest already does it.
+            console.log('[AutoPilot] No pending topics in queue.');
+            // Cost guard: do not call Gemini from the 2-hour autopilot loop.
+            // daily-digest is responsible for refilling the queue when it is low.
             return res.status(200).json({ message: 'No pending topics found' });
         }
 
@@ -95,6 +110,8 @@ export default async function handler(req: any, res: any) {
                         topic: pendingTopic.title,
                         template: pendingTopic.template || 'review',
                         recipientEmail: settings.recipientEmail || '',
+                        publish_id: pendingTopic.id,
+                        app_url: APP_URL,
                     },
                 }),
             }
@@ -106,9 +123,8 @@ export default async function handler(req: any, res: any) {
         }
 
         // 7. Update State
-        // Mark topic as "processing" or "approved" (though autopilot bypasses approval)
         const updatedTopics = topics.map(t => 
-            t.id === pendingTopic.id ? { ...t, status: 'published', publishedAt: now.toISOString() } : t
+            t.id === pendingTopic.id ? { ...t, status: 'publishing', publishedAt: now.toISOString() } : t
         );
         await redis.set(topicsKey, updatedTopics);
         await redis.set('admin:last_posted_at', now.toISOString());
