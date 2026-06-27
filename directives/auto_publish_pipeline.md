@@ -71,6 +71,9 @@ auto-publish.yml
 | `APP_URL` | 배포 URL. 기본값은 `https://auto-blog-by-google-ai.vercel.app` |
 | `GMAIL_USER` | 리포트 수신 기본값 |
 | `GMAIL_APP_PASSWORD` | daily-digest 이메일 발송용 |
+| `KEYWORD_AUTO_REFRESH_SEEDS` | SEO 시드 키워드 자동 갱신 여부. 기본 활성화, `false`면 비활성화 |
+| `KEYWORD_SEED_REFRESH_INTERVAL_DAYS` | SEO 시드 키워드 자동 갱신 주기. 기본 `7` |
+| `KEYWORD_AUTO_REFRESH_SEED_COUNT` | 자동 갱신 때 저장할 시드 키워드 수. 기본 `8` |
 | `KEYWORD_MAX_SEEDS_PER_RUN` | 키워드 발굴 1회 최대 시드 수. 기본 `2` |
 | `KEYWORD_MAX_QUEUE_ADD` | 키워드 발굴 1회 큐 추가 최대 개수. 기본 `3` |
 | `KEYWORD_MIN_PENDING_TOPICS` | pending 큐가 이 개수 이상이면 발굴 생략. 기본 `4` |
@@ -80,7 +83,7 @@ auto-publish.yml
 - 오토파일럿은 2시간마다 호출되지만 KST 09:00~23:59에만 발행을 시도한다.
 - 마지막 발행 후 48시간이 지나면 발행 확률은 100%가 된다.
 - 12시간 이내에는 1%, 12~24시간은 5%, 24~36시간은 10%, 36~48시간은 25% 확률로 시도한다.
-- 오토파일럿은 Gemini를 호출하지 않는다. 키워드 보충은 `daily-digest`가 담당한다.
+- 오토파일럿은 Gemini를 호출하지 않는다. 키워드 보충과 SEO 시드 키워드 주간 갱신은 `daily-digest`가 담당한다.
 - 발행 시작 시 주제 상태는 `publishing`이 되고, GitHub Actions 결과에 따라 `published` 또는 `failed`로 변경된다.
 - 쿠키가 만료되면 발행 스크립트가 카카오 로그인을 시도하고, 계정에 2FA가 켜져 있으면 카카오톡 승인이 필요하다.
 - GitHub 수동 진단 워크플로우를 사용할 때는 GitHub `CRON_SECRET`과 Vercel `CRON_SECRET` 값이 같아야 한다.

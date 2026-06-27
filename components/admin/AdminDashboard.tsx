@@ -550,7 +550,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                 <div>
                   <label className="block text-sm font-semibold mb-2">🔍 SEO 시드 키워드 (핵심 설정)</label>
                   <p className="text-xs text-slate-400 mb-2">
-                    쉼표로 여러 개 입력 · 비워두면 기후인사이트 기본 시드(CBAM, ESG 공시, Scope 3 등)를 사용합니다
+                    쉼표로 여러 개 입력 · 비워두면 기후인사이트 기본 시드(CBAM, ESG 공시, Scope 3 등)를 사용합니다 · 기본 7일마다 최신 시드로 자동 갱신됩니다
                   </p>
                   <input
                     type="text"
@@ -560,7 +560,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                     placeholder="예: CBAM 전환기간, ESG 공시 대상 기업, Scope 3 배출량 산정"
                   />
                   <p className="mt-2 text-xs text-slate-400">
-                    비용 보호: 자동 발굴은 대기열이 부족할 때만 실행되며, 기본값은 1회 최대 2개 시드·최대 4회 Gemini 호출입니다.
+                    비용 보호: 자동 발굴은 대기열이 부족할 때만 실행되며, 기본값은 1회 최대 2개 시드·최대 4회 Gemini 호출입니다. 주간 시드 갱신은 Gemini 1회 추가 호출입니다.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(settings.dailyTopic || '').split(',').filter(s => s.trim()).map((seed, i) => (

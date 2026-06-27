@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import nodemailer from 'nodemailer';
 import { redis } from '../_lib/redis.js';
-import { DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/climateSeeds.js';
+import { CLIMATE_INSIGHT_DEFAULT_SEEDS, DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/climateSeeds.js';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -29,9 +29,21 @@ interface DiscoveredKeyword {
   discoveredAt: string;
 }
 
+interface SeedRefreshResult {
+  dailyTopic: string;
+  refreshed: boolean;
+  reason: string;
+  seeds: string[];
+  estimatedGeminiCalls: number;
+}
+
 const MAX_SEEDS_PER_RUN = Number(process.env.KEYWORD_MAX_SEEDS_PER_RUN || 2);
 const MAX_KEYWORDS_TO_QUEUE_PER_RUN = Number(process.env.KEYWORD_MAX_QUEUE_ADD || 3);
 const MIN_PENDING_TOPICS_BEFORE_DISCOVERY = Number(process.env.KEYWORD_MIN_PENDING_TOPICS || 4);
+const AUTO_REFRESH_SEEDS = process.env.KEYWORD_AUTO_REFRESH_SEEDS !== 'false';
+const SEED_REFRESH_INTERVAL_DAYS = Number(process.env.KEYWORD_SEED_REFRESH_INTERVAL_DAYS || 7);
+const AUTO_REFRESH_SEED_COUNT = Number(process.env.KEYWORD_AUTO_REFRESH_SEED_COUNT || 8);
+const SEED_REFRESH_REDIS_KEY = 'admin:last_seed_refresh_at';
 const DELAY_BETWEEN_CALLS_MS = 3000;
 
 function delay(ms: number): Promise<void> {
@@ -70,6 +82,143 @@ function parseJsonArray(text: string): any[] {
     throw new Error('Gemini response is not a JSON array');
   }
   return parsed;
+}
+
+function uniqueSeedList(seeds: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const seed of seeds) {
+    const trimmed = String(seed || '').trim();
+    const key = trimmed.replace(/\s+/g, '').toLowerCase();
+    if (!trimmed || seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+async function refreshSeedTopicIfDue(currentDailyTopic: string, settings: any): Promise<SeedRefreshResult> {
+  const fallbackSeeds = parseSeedList(currentDailyTopic);
+  const fallbackTopic = fallbackSeeds.length > 0 ? fallbackSeeds.join(', ') : DEFAULT_DAILY_TOPIC;
+
+  if (!AUTO_REFRESH_SEEDS) {
+    return {
+      dailyTopic: fallbackTopic,
+      refreshed: false,
+      reason: 'Auto seed refresh disabled.',
+      seeds: fallbackSeeds,
+      estimatedGeminiCalls: 0,
+    };
+  }
+
+  if (!API_KEY) {
+    return {
+      dailyTopic: fallbackTopic,
+      refreshed: false,
+      reason: 'API key not configured.',
+      seeds: fallbackSeeds,
+      estimatedGeminiCalls: 0,
+    };
+  }
+
+  const now = new Date();
+  const lastRefresh = await redis.get<string>(SEED_REFRESH_REDIS_KEY);
+  if (lastRefresh) {
+    const elapsedDays = (now.getTime() - new Date(lastRefresh).getTime()) / 86_400_000;
+    if (elapsedDays < SEED_REFRESH_INTERVAL_DAYS) {
+      return {
+        dailyTopic: fallbackTopic,
+        refreshed: false,
+        reason: `Next refresh in ${(SEED_REFRESH_INTERVAL_DAYS - elapsedDays).toFixed(1)} days.`,
+        seeds: fallbackSeeds,
+        estimatedGeminiCalls: 0,
+      };
+    }
+  }
+
+  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  const today = now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+  const currentSeeds = fallbackSeeds.length > 0 ? fallbackSeeds : CLIMATE_INSIGHT_DEFAULT_SEEDS;
+
+  const prompt = `오늘은 ${today}입니다.
+당신은 기후인사이트 블로그의 SEO 편집장입니다.
+
+현재 SEO 시드 키워드:
+${currentSeeds.join(', ')}
+
+기본 시드 풀:
+${CLIMATE_INSIGHT_DEFAULT_SEEDS.join(', ')}
+
+임무:
+Google Search 결과를 근거로 앞으로 1주일 동안 기후인사이트 자동 발행에 사용할 SEO 시드 키워드 ${AUTO_REFRESH_SEED_COUNT}개를 추천하세요.
+
+추천 기준:
+1. 기후정책, ESG 공시, 탄소중립, 에너지 비용, 수출 탄소규제, 지원사업, 기업 실무 대응과 직접 관련되어야 합니다.
+2. 최근 6~12개월 안에 실제 검색 수요나 정책/산업 변화가 확인되어야 합니다.
+3. 너무 넓은 단어보다 2~5단어의 시드 키워드를 추천합니다.
+4. 기존 시드와 완전히 같은 표현은 피하되, 성격이 맞는 핵심 주제는 더 구체적으로 갱신해도 됩니다.
+5. 연예, 일상, 정치 공방, 공포 마케팅, 블로그 주제와 무관한 트래픽성 키워드는 제외합니다.
+
+STRICT OUTPUT FORMAT (JSON array, no markdown fences):
+[
+  {
+    "keyword": "추천 시드 키워드",
+    "reason": "추천 이유 한 문장"
+  }
+]
+
+IMPORTANT:
+- Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
+- 모든 내용은 한국어로 작성합니다.`;
+
+  try {
+    console.log('[daily-digest] Refreshing SEO seed topic list...');
+    const response = await generateContentWithRetry(ai, {
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    }, 1);
+
+    const parsed = parseJsonArray(response.text || '');
+    const refreshedSeeds = uniqueSeedList(
+      parsed
+        .map((item: any) => item?.keyword)
+        .filter((seed: any) => typeof seed === 'string')
+    ).slice(0, AUTO_REFRESH_SEED_COUNT);
+
+    if (refreshedSeeds.length < Math.min(4, AUTO_REFRESH_SEED_COUNT)) {
+      return {
+        dailyTopic: fallbackTopic,
+        refreshed: false,
+        reason: 'Gemini returned too few usable seeds.',
+        seeds: fallbackSeeds,
+        estimatedGeminiCalls: 1,
+      };
+    }
+
+    const refreshedTopic = refreshedSeeds.join(', ');
+    await redis.set('admin:settings', { ...(settings || {}), dailyTopic: refreshedTopic });
+    await redis.set(SEED_REFRESH_REDIS_KEY, now.toISOString());
+
+    return {
+      dailyTopic: refreshedTopic,
+      refreshed: true,
+      reason: 'Seed topic list refreshed.',
+      seeds: refreshedSeeds,
+      estimatedGeminiCalls: 1,
+    };
+  } catch (error: any) {
+    console.error('[daily-digest] Seed refresh failed:', error.message);
+    return {
+      dailyTopic: fallbackTopic,
+      refreshed: false,
+      reason: `Seed refresh failed: ${error.message}`,
+      seeds: fallbackSeeds,
+      estimatedGeminiCalls: 1,
+    };
+  }
 }
 
 async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredKeyword[]> {
@@ -296,16 +445,22 @@ export default async function handler(req: any, res: any) {
   try {
     let recipientEmail = process.env.GMAIL_USER || '';
     let dailyTopic = process.env.DAILY_TOPIC || DEFAULT_DAILY_TOPIC;
+    let settings: any = {};
 
     try {
-      const settings = await redis.get<any>('admin:settings');
-      if (settings) {
+      const loadedSettings = await redis.get<any>('admin:settings');
+      if (loadedSettings) {
+        settings = loadedSettings;
         if (settings.recipientEmail) recipientEmail = settings.recipientEmail;
         if (settings.dailyTopic) dailyTopic = settings.dailyTopic;
       }
     } catch (e) {
       console.error('Redis Load Settings Error:', e);
     }
+
+    const seedRefresh = await refreshSeedTopicIfDue(dailyTopic, settings);
+    dailyTopic = seedRefresh.dailyTopic;
+    console.log(`[daily-digest] Seed refresh: ${seedRefresh.refreshed ? 'refreshed' : 'skipped'} (${seedRefresh.reason})`);
 
     const topicsKey = 'admin:topics_queue';
     const existingTopics = await redis.get<any[]>(topicsKey) || [];
@@ -317,7 +472,8 @@ export default async function handler(req: any, res: any) {
         message: 'Skipped keyword discovery because pending queue is sufficiently stocked.',
         pendingCount: pendingTopics.length,
         minPendingBeforeDiscovery: MIN_PENDING_TOPICS_BEFORE_DISCOVERY,
-        estimatedGeminiCalls: 0,
+        seedRefresh,
+        estimatedGeminiCalls: seedRefresh.estimatedGeminiCalls,
       });
     }
 
@@ -326,7 +482,8 @@ export default async function handler(req: any, res: any) {
     const seeds = selectSeedsForRun(configuredSeeds, MAX_SEEDS_PER_RUN, recentTopicTitles);
 
     console.log(`[daily-digest] Selected seeds: ${seeds.join(', ')}`);
-    console.log(`[daily-digest] Cost guard: max ${MAX_SEEDS_PER_RUN} seeds, estimated Gemini calls ${seeds.length * 2}`);
+    const estimatedGeminiCalls = seedRefresh.estimatedGeminiCalls + seeds.length * 2;
+    console.log(`[daily-digest] Cost guard: max ${MAX_SEEDS_PER_RUN} seeds, estimated Gemini calls ${estimatedGeminiCalls}`);
 
     const discoveredKeywords = await discoverSEOKeywords(seeds);
 
@@ -334,7 +491,8 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({
         message: 'No keywords discovered.',
         seedCount: seeds.length,
-        estimatedGeminiCalls: seeds.length * 2,
+        seedRefresh,
+        estimatedGeminiCalls,
       });
     }
 
@@ -346,7 +504,8 @@ export default async function handler(req: any, res: any) {
         message: 'Keywords discovered but all were duplicates.',
         discoveredCount: discoveredKeywords.length,
         queuedCount: 0,
-        estimatedGeminiCalls: seeds.length * 2,
+        seedRefresh,
+        estimatedGeminiCalls,
       });
     }
 
@@ -385,7 +544,8 @@ export default async function handler(req: any, res: any) {
       seedCount: seeds.length,
       keywordCount: keywords.length,
       queuedCount: keywordsToQueue.length,
-      estimatedGeminiCalls: seeds.length * 2,
+      seedRefresh,
+      estimatedGeminiCalls,
       keywords,
     });
   } catch (error: any) {
