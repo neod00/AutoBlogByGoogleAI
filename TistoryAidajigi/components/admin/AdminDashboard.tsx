@@ -569,15 +569,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                 <div>
                   <label className="block text-sm font-semibold mb-2">🔍 SEO 시드 키워드 (핵심 설정)</label>
                   <p className="text-xs text-slate-400 mb-2">
-                    쉼표로 여러 개 입력 · 이 키워드를 기반으로 AI가 매일 트렌딩 롱테일 키워드를 발굴합니다
+                    쉼표로 여러 개 입력 · 이 키워드를 기반으로 AI가 매일 트렌딩 롱테일 키워드를 발굴합니다 · 기본 7일마다 최신 AI 시드로 자동 갱신됩니다
                   </p>
                   <input
                     type="text"
                     value={settings.dailyTopic || ''}
                     onChange={e => setSettings({...settings, dailyTopic: e.target.value})}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-cyan-500 outline-none"
-                    placeholder="예: 미국주식, AI, 부동산, 반도체"
+                    placeholder="예: ChatGPT 활용법, AI 모델 비교, 생성형 AI 도구, AI 업무 자동화"
                   />
+                  <p className="mt-2 text-xs text-slate-400">
+                    비용 보호: 주간 시드 갱신은 Gemini 1회 추가 호출이며, 발굴은 최대 5개 시드까지만 처리합니다.
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {(settings.dailyTopic || '').split(',').filter(s => s.trim()).map((seed, i) => (
                       <span key={i} className="px-3 py-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400 rounded-full text-xs font-semibold">

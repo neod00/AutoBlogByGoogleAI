@@ -47,12 +47,218 @@ interface DiscoveredKeyword {
   discoveredAt: string;
 }
 
+interface SeedRefreshResult {
+  dailyTopic: string;
+  refreshed: boolean;
+  reason: string;
+  seeds: string[];
+  estimatedGeminiCalls: number;
+}
+
+const DEFAULT_DAILY_TOPIC = '최신 AI 기술 및 뉴스';
+const AIDAJIGI_DEFAULT_SEEDS = [
+  'ChatGPT 활용법',
+  '생성형 AI 도구',
+  'AI 모델 비교',
+  'AI 에이전트',
+  '업무 자동화 AI',
+  '기업 AI 전환',
+  'AI 정책 규제',
+  '프롬프트 엔지니어링',
+  'AI 이미지 생성',
+  'AI 영상 생성',
+  'LLM 활용 사례',
+  'AI 생산성 도구',
+];
+
 // 무료 API Rate Limit 방어: 시드별 순차 호출 + 딜레이
 const MAX_SEEDS_PER_RUN = 5;
+const AUTO_REFRESH_SEEDS = process.env.KEYWORD_AUTO_REFRESH_SEEDS !== 'false';
+const SEED_REFRESH_INTERVAL_DAYS = Number(process.env.KEYWORD_SEED_REFRESH_INTERVAL_DAYS || 7);
+const AUTO_REFRESH_SEED_COUNT = Number(process.env.KEYWORD_AUTO_REFRESH_SEED_COUNT || 8);
+const SEED_REFRESH_REDIS_KEY = 'admin:last_seed_refresh_at';
 const DELAY_BETWEEN_CALLS_MS = 3000;
 
 function delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 2) {
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+        try {
+            return await ai.models.generateContent(params);
+        } catch (e: any) {
+            attempt++;
+            const isRetryable = e.message?.includes("429") || e.message?.includes("503") || e.message?.includes("UNAVAILABLE");
+            if (attempt > maxRetries || !isRetryable) {
+                throw e;
+            }
+            const waitTime = Math.pow(2, attempt) * 2000;
+            console.warn(`[daily-digest] Gemini retry in ${waitTime}ms. Attempt ${attempt}/${maxRetries}`);
+            await delay(waitTime);
+        }
+    }
+}
+
+function parseJsonArray(text: string): any[] {
+    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleanText);
+    if (!Array.isArray(parsed)) {
+        throw new Error('Gemini response is not a JSON array');
+    }
+    return parsed;
+}
+
+function parseSeedList(topic: string): string[] {
+    return String(topic || '')
+        .split(',')
+        .map(seed => seed.trim())
+        .filter(Boolean);
+}
+
+function uniqueSeedList(seeds: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+
+    for (const seed of seeds) {
+        const trimmed = String(seed || '').trim();
+        const key = trimmed.replace(/\s+/g, '').toLowerCase();
+        if (!trimmed || seen.has(key)) continue;
+        seen.add(key);
+        result.push(trimmed);
+    }
+
+    return result;
+}
+
+async function refreshSeedTopicIfDue(currentDailyTopic: string, settings: any): Promise<SeedRefreshResult> {
+    const fallbackSeeds = parseSeedList(currentDailyTopic);
+    const fallbackTopic = fallbackSeeds.length > 0 ? fallbackSeeds.join(', ') : DEFAULT_DAILY_TOPIC;
+
+    if (!AUTO_REFRESH_SEEDS) {
+        return {
+            dailyTopic: fallbackTopic,
+            refreshed: false,
+            reason: 'Auto seed refresh disabled.',
+            seeds: fallbackSeeds,
+            estimatedGeminiCalls: 0,
+        };
+    }
+
+    if (!API_KEY) {
+        return {
+            dailyTopic: fallbackTopic,
+            refreshed: false,
+            reason: 'API key not configured.',
+            seeds: fallbackSeeds,
+            estimatedGeminiCalls: 0,
+        };
+    }
+
+    const now = new Date();
+    const lastRefresh = await redis.get<string>(SEED_REFRESH_REDIS_KEY);
+    if (lastRefresh) {
+        const elapsedDays = (now.getTime() - new Date(lastRefresh).getTime()) / 86_400_000;
+        if (elapsedDays < SEED_REFRESH_INTERVAL_DAYS) {
+            return {
+                dailyTopic: fallbackTopic,
+                refreshed: false,
+                reason: `Next refresh in ${(SEED_REFRESH_INTERVAL_DAYS - elapsedDays).toFixed(1)} days.`,
+                seeds: fallbackSeeds,
+                estimatedGeminiCalls: 0,
+            };
+        }
+    }
+
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    const today = now.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentSeeds = fallbackSeeds.length > 0 ? fallbackSeeds : AIDAJIGI_DEFAULT_SEEDS;
+
+    const prompt = `오늘은 ${today}입니다.
+당신은 aidajigi.tistory.com 블로그의 SEO 편집장입니다.
+
+블로그 성격:
+- AI를 처음 접하는 직장인과 실무자를 위한 쉬운 설명
+- ChatGPT, Gemini, Claude 등 AI 모델 비교와 사용법
+- 생성형 AI, AI 에이전트, 업무 자동화, 기업 AI 전환, AI 정책/표준
+- 단순 뉴스 요약보다 독자가 바로 실행할 수 있는 가이드와 비교 분석을 선호
+
+현재 SEO 시드 키워드:
+${currentSeeds.join(', ')}
+
+기본 시드 풀:
+${AIDAJIGI_DEFAULT_SEEDS.join(', ')}
+
+임무:
+Google Search 결과를 근거로 앞으로 1주일 동안 Aidajigi 자동 발행에 사용할 SEO 시드 키워드 ${AUTO_REFRESH_SEED_COUNT}개를 추천하세요.
+
+추천 기준:
+1. AI 모델 리뷰, 생성형 AI 활용법, AI 활용 가이드처럼 현재 부족한 카테고리를 우선합니다.
+2. 기업 AI 전환(AX)은 이미 글이 많으므로 꼭 필요한 최신 이슈가 아니면 비중을 낮춥니다.
+3. 최근 6~12개월 안에 실제 검색 수요나 제품/정책/산업 변화가 확인되어야 합니다.
+4. 너무 넓은 단어보다 2~5단어의 한국어 시드 키워드를 추천합니다.
+5. 연예, 단순 가십, 공포 마케팅, 블로그 주제와 무관한 트래픽성 키워드는 제외합니다.
+
+STRICT OUTPUT FORMAT (JSON array, no markdown fences):
+[
+  {
+    "keyword": "추천 시드 키워드",
+    "category": "AI 뉴스 & 트렌드 | AI 모델 리뷰 | 생성형 AI | AI 기업 동향 | 기업 AI 전환(AX) | AI 정책 & 표준 | AI 활용 가이드",
+    "reason": "추천 이유 한 문장"
+  }
+]
+
+IMPORTANT:
+- Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
+- 모든 내용은 한국어로 작성합니다.`;
+
+    try {
+        console.log('[daily-digest] Refreshing Aidajigi SEO seed topic list...');
+        const response = await generateContentWithRetry(ai, {
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { tools: [{ googleSearch: {} }] },
+        }, 1);
+
+        const parsed = parseJsonArray(response.text || '');
+        const refreshedSeeds = uniqueSeedList(
+            parsed
+                .map((item: any) => item?.keyword)
+                .filter((seed: any) => typeof seed === 'string')
+        ).slice(0, AUTO_REFRESH_SEED_COUNT);
+
+        if (refreshedSeeds.length < Math.min(4, AUTO_REFRESH_SEED_COUNT)) {
+            return {
+                dailyTopic: fallbackTopic,
+                refreshed: false,
+                reason: 'Gemini returned too few usable seeds.',
+                seeds: fallbackSeeds,
+                estimatedGeminiCalls: 1,
+            };
+        }
+
+        const refreshedTopic = refreshedSeeds.join(', ');
+        await redis.set('admin:settings', { ...(settings || {}), dailyTopic: refreshedTopic });
+        await redis.set(SEED_REFRESH_REDIS_KEY, now.toISOString());
+
+        return {
+            dailyTopic: refreshedTopic,
+            refreshed: true,
+            reason: 'Seed topic list refreshed.',
+            seeds: refreshedSeeds,
+            estimatedGeminiCalls: 1,
+        };
+    } catch (error: any) {
+        console.error('[daily-digest] Seed refresh failed:', error.message);
+        return {
+            dailyTopic: fallbackTopic,
+            refreshed: false,
+            reason: `Seed refresh failed: ${error.message}`,
+            seeds: fallbackSeeds,
+            estimatedGeminiCalls: 1,
+        };
+    }
 }
 
 // 단일 시드 발굴
@@ -225,11 +431,13 @@ export default async function handler(req: any, res: any) {
     try {
         // 2. 관리자 설정 로드 (Redis KV)
         let recipientEmail = process.env.GMAIL_USER || '';
-        let dailyTopic = process.env.DAILY_TOPIC || 'AI Trends';
+        let dailyTopic = process.env.DAILY_TOPIC || DEFAULT_DAILY_TOPIC;
+        let settings: any = {};
 
         try {
-            const settings = await redis.get<any>('admin:settings');
-            if (settings) {
+            const loadedSettings = await redis.get<any>('admin:settings');
+            if (loadedSettings) {
+                settings = loadedSettings;
                 if (settings.recipientEmail) recipientEmail = settings.recipientEmail;
                 if (settings.dailyTopic) dailyTopic = settings.dailyTopic;
             }
@@ -237,13 +445,23 @@ export default async function handler(req: any, res: any) {
             console.error('Redis Load Settings Error:', e);
         }
 
-        const seeds = dailyTopic.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+        const seedRefresh = await refreshSeedTopicIfDue(dailyTopic, settings);
+        dailyTopic = seedRefresh.dailyTopic;
+        console.log(`[daily-digest] Seed refresh: ${seedRefresh.refreshed ? 'refreshed' : 'skipped'} (${seedRefresh.reason})`);
+
+        const seeds = parseSeedList(dailyTopic);
+        const selectedSeedCount = Math.min(seeds.length, MAX_SEEDS_PER_RUN);
+        const estimatedGeminiCalls = seedRefresh.estimatedGeminiCalls + selectedSeedCount * 2;
 
         // 3. SEO 키워드 발굴 (업그레이드된 프롬프트)
         const keywords = await discoverSEOKeywords(seeds);
 
         if (keywords.length === 0) {
-            return res.status(200).json({ message: 'No keywords discovered.' });
+            return res.status(200).json({
+                message: 'No keywords discovered.',
+                seedRefresh,
+                estimatedGeminiCalls,
+            });
         }
 
         // 4. 발굴 키워드를 Redis에 저장 (admin:discovered_keywords)
@@ -345,7 +563,13 @@ export default async function handler(req: any, res: any) {
         // 7. Send Email
         if (recipientEmail && process.env.GMAIL_USER) {
             await sendEmail(process.env.GMAIL_USER, recipientEmail, `🔍 SEO 키워드 리포트: ${dailyTopic} (${new Date().toLocaleDateString('ko-KR')})`, html);
-            return res.status(200).json({ message: 'SEO keyword report sent', keywordCount: keywords.length, keywords });
+            return res.status(200).json({
+                message: 'SEO keyword report sent',
+                keywordCount: keywords.length,
+                seedRefresh,
+                estimatedGeminiCalls,
+                keywords,
+            });
         } else {
             return res.status(500).json({ error: 'recipientEmail or GMAIL_USER not configured' });
         }

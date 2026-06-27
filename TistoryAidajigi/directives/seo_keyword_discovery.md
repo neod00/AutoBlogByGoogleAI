@@ -1,6 +1,18 @@
 # SEO 키워드 발굴 지침 (aidajigi.tistory.com)
 
-AI 블로그의 성장을 위해 정보탐색형 롱테일 키워드를 발굴합니다.
+AI 블로그의 성장을 위해 정보탐색형 롱테일 키워드를 발굴합니다. `SEO 시드 키워드` 설정값도 기본 7일마다 Aidajigi 성격에 맞는 최신 AI 이슈 기반 시드로 자동 갱신합니다.
+
+## 자동 시드 갱신
+
+- `api/cron/daily-digest.ts`가 실행될 때 `admin:last_seed_refresh_at`을 확인합니다.
+- 마지막 갱신 후 기본 7일이 지났으면 Gemini 1회와 Google Search Grounding으로 새 시드 키워드 목록을 추천받습니다.
+- 추천된 시드는 `admin:settings.dailyTopic`에 저장되고 이후 롱테일 키워드 발굴의 입력값으로 사용됩니다.
+- Redis에는 `aidajigi:` prefix가 붙으므로 실제 키는 `aidajigi:admin:last_seed_refresh_at`, `aidajigi:admin:settings`입니다.
+- 환경변수:
+  - `KEYWORD_AUTO_REFRESH_SEEDS`: 기본 활성화. `false`면 자동 갱신 비활성화.
+  - `KEYWORD_SEED_REFRESH_INTERVAL_DAYS`: 자동 갱신 주기. 기본 `7`.
+  - `KEYWORD_AUTO_REFRESH_SEED_COUNT`: 갱신 때 저장할 시드 수. 기본 `8`.
+- 비용 기준: 시드 갱신일에는 Gemini 1회가 추가되고, 기존 키워드 발굴은 최대 5개 시드까지만 처리합니다.
 
 ## 발굴 전략
 1. **30년차 AI 전문 SEO 전문가** 페르소나를 활용하세요.
