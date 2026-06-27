@@ -2,7 +2,7 @@
 
 ## 목적
 
-기후인사이트 글감을 자동으로 보충하고, 발행 대기열의 `pending` 주제를 이틀에 1개 꼴로 티스토리에 발행한다. Vercel Cron이 2시간마다 오토파일럿 API를 호출하고, 실제 발행은 GitHub Actions repository dispatch로 실행한다.
+기후인사이트 글감을 자동으로 보충하고, 발행 대기열의 `pending` 주제를 이틀에 1개 꼴로 티스토리에 발행한다. Vercel Cron은 하루 1회 글감을 보충하고, GitHub Actions가 2시간마다 오토파일럿 API를 호출한다. 실제 발행은 GitHub Actions repository dispatch로 실행한다.
 
 ## 전체 구조
 
@@ -13,6 +13,9 @@ daily-digest cron
   -> SEO 키워드 리포트 이메일 발송
 
 vercel.json
+  -> 하루 1회 /api/cron/daily-digest 호출
+
+climateinsight-autopilot-trigger.yml
   -> 2시간마다 /api/cron/auto-pilot 호출
   -> KST 09:00~23:59 안에서만 발행 시도
   -> 마지막 발행 후 48시간 초과 시 강제 시도
@@ -32,8 +35,8 @@ auto-publish.yml
 
 | 파일 | 역할 |
 | --- | --- |
-| `vercel.json` | `daily-digest`, `auto-pilot` Vercel Cron 스케줄 |
-| `.github/workflows/climateinsight-autopilot-trigger.yml` | 오토파일럿 API 수동 진단 호출 |
+| `vercel.json` | Vercel Hobby 제한에 맞춘 하루 1회 `daily-digest` Cron 스케줄 |
+| `.github/workflows/climateinsight-autopilot-trigger.yml` | 2시간 주기 오토파일럿 API 호출 및 수동 진단 |
 | `.github/workflows/auto-publish.yml` | 글 생성, 품질 검사, 티스토리 발행, 결과 알림 |
 | `api/cron/auto-pilot.ts` | 발행 확률, 활동 시간, 큐 선택, GitHub dispatch |
 | `api/cron/daily-digest.ts` | 키워드 발굴, 대기열 보충, 키워드 리포트 |
@@ -81,6 +84,7 @@ auto-publish.yml
 ## 운영 규칙
 
 - 오토파일럿은 2시간마다 호출되지만 KST 09:00~23:59에만 발행을 시도한다.
+- Vercel Hobby는 하루 1회 초과 Cron 배포가 실패하므로, 2시간 오토파일럿 호출은 Vercel Cron이 아니라 GitHub Actions schedule로 실행한다.
 - 마지막 발행 후 48시간이 지나면 발행 확률은 100%가 된다.
 - 12시간 이내에는 1%, 12~24시간은 5%, 24~36시간은 10%, 36~48시간은 25% 확률로 시도한다.
 - 오토파일럿은 Gemini를 호출하지 않는다. 키워드 보충과 SEO 시드 키워드 주간 갱신은 `daily-digest`가 담당한다.
