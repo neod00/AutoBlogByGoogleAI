@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { isAuthenticated } from '../_lib/redis.js';
 import { CLIMATE_INSIGHT_DEFAULT_SEEDS } from '../_lib/climateSeeds.js';
+import { getGeminiErrorStatusCode, getPublicGeminiErrorMessage } from '../_lib/geminiErrors.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 
@@ -99,6 +100,6 @@ IMPORTANT:
     return res.status(200).json({ recommendations });
   } catch (error: any) {
     console.error('[recommend-seeds] Error:', error.message);
-    return res.status(500).json({ error: error.message });
+    return res.status(getGeminiErrorStatusCode(error)).json({ error: getPublicGeminiErrorMessage(error) });
   }
 }

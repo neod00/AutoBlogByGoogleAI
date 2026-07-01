@@ -109,7 +109,7 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
           });
         }
       } else {
-        const errorMessage = data.error || '키워드 발굴에 실패했습니다. 잠시 후 다시 시도해주세요.';
+        const errorMessage = data.error || `키워드 발굴에 실패했습니다. HTTP ${res.status} 응답을 받았습니다.`;
         setNotice({ type: 'error', message: errorMessage });
         alert(errorMessage);
       }

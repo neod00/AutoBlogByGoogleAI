@@ -2,6 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 import nodemailer from 'nodemailer';
 import { redis } from '../_lib/redis.js';
 import { CLIMATE_INSIGHT_DEFAULT_SEEDS, DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/climateSeeds.js';
+import {
+  getGeminiErrorStatusCode,
+  getPublicGeminiErrorMessage,
+  isGeminiUsageLimitError,
+  isRetryableGeminiError,
+} from '../_lib/geminiErrors.js';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -64,7 +70,7 @@ async function generateContentWithRetry(ai: any, params: any, maxRetries = 2) {
       return await ai.models.generateContent(params);
     } catch (e: any) {
       attempt++;
-      const isRetryable = e.message?.includes("429") || e.message?.includes("503") || e.message?.includes("UNAVAILABLE");
+      const isRetryable = isRetryableGeminiError(e);
       if (attempt > maxRetries || !isRetryable) {
         throw e;
       }
@@ -211,10 +217,14 @@ IMPORTANT:
     };
   } catch (error: any) {
     console.error('[daily-digest] Seed refresh failed:', error.message);
+    if (isGeminiUsageLimitError(error)) {
+      throw error;
+    }
+
     return {
       dailyTopic: fallbackTopic,
       refreshed: false,
-      reason: `Seed refresh failed: ${error.message}`,
+      reason: `Seed refresh failed: ${getPublicGeminiErrorMessage(error)}`,
       seeds: fallbackSeeds,
       estimatedGeminiCalls: 1,
     };
@@ -327,6 +337,9 @@ async function discoverSEOKeywords(seeds: string[]): Promise<DiscoveredKeyword[]
       console.log(`  Found ${keywords.length} keywords`);
     } catch (e: any) {
       console.error(`  ERROR for seed "${seed}":`, e.message);
+      if (isGeminiUsageLimitError(e)) {
+        throw e;
+      }
     }
 
     if (i < selectedSeeds.length - 1) {
@@ -550,6 +563,8 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error: any) {
     console.error(error);
-    return res.status(500).json({ error: error.message });
+    return res.status(getGeminiErrorStatusCode(error)).json({
+      error: getPublicGeminiErrorMessage(error),
+    });
   }
 }

@@ -1,6 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { redis, isAuthenticated } from '../_lib/redis.js';
 import { DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/climateSeeds.js';
+import {
+  getGeminiErrorStatusCode,
+  getPublicGeminiErrorMessage,
+  isGeminiUsageLimitError,
+  isRetryableGeminiError,
+} from '../_lib/geminiErrors.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 const REDIS_KEY = 'admin:discovered_keywords';
@@ -31,19 +37,19 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function generateContentWithRetry(ai: any, params: any, maxRetries = 3) {
+async function generateContentWithRetry(ai: any, params: any, maxRetries = 1) {
   let attempt = 0;
   while (attempt <= maxRetries) {
     try {
       return await ai.models.generateContent(params);
     } catch (e: any) {
       attempt++;
-      const isRetryable = e.message?.includes("429") || e.message?.includes("503") || e.message?.includes("UNAVAILABLE");
+      const isRetryable = isRetryableGeminiError(e);
       if (attempt > maxRetries || !isRetryable) {
         throw e;
       }
       const waitTime = Math.pow(2, attempt) * 2000;
-      console.warn(`[API Retry] Temporary issue (429/503). Retrying in ${waitTime}ms... (Attempt ${attempt}/${maxRetries})`);
+      console.warn(`[API Retry] Temporary Gemini issue. Retrying in ${waitTime}ms... (Attempt ${attempt}/${maxRetries})`);
       await delay(waitTime);
     }
   }
@@ -149,11 +155,12 @@ IMPORTANT:
   }
 }
 
-async function discoverKeywords(seeds: string[]): Promise<DiscoveredKeyword[]> {
+async function discoverKeywords(seeds: string[]): Promise<{ keywords: DiscoveredKeyword[]; errors: string[] }> {
   if (!API_KEY) throw new Error("API_KEY not set");
   const ai = new GoogleGenAI({ apiKey: API_KEY });
   const selectedSeeds = seeds.slice(0, MAX_SEEDS_PER_RUN);
   const allKeywords: DiscoveredKeyword[] = [];
+  const errors: string[] = [];
 
   for (let i = 0; i < selectedSeeds.length; i++) {
     const seed = selectedSeeds[i];
@@ -165,6 +172,10 @@ async function discoverKeywords(seeds: string[]): Promise<DiscoveredKeyword[]> {
       console.log(`  Found ${keywords.length} keywords for "${seed}"`);
     } catch (e: any) {
       console.error(`  ERROR for seed "${seed}":`, e.message);
+      if (isGeminiUsageLimitError(e)) {
+        throw e;
+      }
+      errors.push(`${seed}: ${e.message || 'Gemini discovery failed'}`);
     }
 
     if (i < selectedSeeds.length - 1) {
@@ -173,7 +184,7 @@ async function discoverKeywords(seeds: string[]): Promise<DiscoveredKeyword[]> {
     }
   }
 
-  return allKeywords;
+  return { keywords: allKeywords, errors };
 }
 
 function normalizeForDuplicateCheck(text: string): string {
@@ -233,7 +244,17 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: 'No seed keywords configured. Update dailyTopic in settings.' });
       }
 
-      const discoveredKeywords = await discoverKeywords(seeds);
+      const discovery = await discoverKeywords(seeds);
+      const discoveredKeywords = discovery.keywords;
+
+      if (discoveredKeywords.length === 0 && discovery.errors.length > 0) {
+        return res.status(502).json({
+          error: `Gemini 키워드 발굴이 실패했습니다. ${discovery.errors[0]}`,
+          errors: discovery.errors,
+          selectedSeeds: seeds,
+        });
+      }
+
       const existing = await redis.get<DiscoveredKeyword[]>(REDIS_KEY) || [];
       const newKeywords = filterDuplicateKeywords(discoveredKeywords, existingTopics, existing);
       const merged = [...newKeywords, ...existing].slice(0, 30);
@@ -276,6 +297,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
     console.error("Discover Keywords API Error:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(getGeminiErrorStatusCode(error)).json({
+      error: getPublicGeminiErrorMessage(error),
+    });
   }
 }

@@ -77,6 +77,8 @@
 - 수동 발굴 버튼도 동일하게 기본 최대 2개 시드만 처리한다.
 - 수동 발굴 API는 Gemini + Google Search 호출 때문에 최대 60초까지 실행될 수 있도록 `maxDuration`을 명시한다.
 - 수동 발굴 결과가 모두 기존 대기열/기존 키워드와 중복되면 화면에는 신규 추가 0개로 안내한다.
+- Gemini가 `RESOURCE_EXHAUSTED`, 월간 지출 한도(`monthly spending cap`), 쿼터 초과를 반환하면 재시도하지 않는다. 재시도해도 성공 가능성이 낮고 Vercel 60초 타임아웃만 유발하기 때문이다.
+- 지출 한도/사용량 한도 초과는 관리자 화면에 명확한 오류로 표시하고, Google AI Studio의 Billing/Spend cap 설정을 확인하도록 안내한다.
 
 ## 키워드 선정 기준
 
