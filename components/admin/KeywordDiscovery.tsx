@@ -48,6 +48,7 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [filter, setFilter] = useState<'all' | 'discovered' | 'approved' | 'dismissed'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const fetchKeywords = async () => {
     try {
@@ -71,6 +72,10 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
 
   const handleDiscover = async () => {
     setIsDiscovering(true);
+    setNotice({
+      type: 'info',
+      message: 'Gemini와 Google Search로 최신 키워드를 발굴 중입니다. 최대 1분 정도 걸릴 수 있습니다.',
+    });
     try {
       const res = await fetch('/api/admin/discover-keywords', {
         method: 'POST',
@@ -80,14 +85,38 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
         },
         body: JSON.stringify({}),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
         setKeywords(data.keywords || []);
+        const newCount = Number(data.newCount || 0);
+        const discoveredCount = Number(data.discoveredCount || 0);
+        const selectedSeeds = Array.isArray(data.selectedSeeds) ? data.selectedSeeds.join(', ') : '';
+
+        if (newCount > 0) {
+          setNotice({
+            type: 'success',
+            message: `새 키워드 ${newCount}개를 추가했습니다.${selectedSeeds ? ` 선택 시드: ${selectedSeeds}` : ''}`,
+          });
+        } else if (discoveredCount > 0) {
+          setNotice({
+            type: 'info',
+            message: `발굴은 완료됐지만 기존 대기열/키워드와 중복되어 새로 추가된 항목이 없습니다.${selectedSeeds ? ` 선택 시드: ${selectedSeeds}` : ''}`,
+          });
+        } else {
+          setNotice({
+            type: 'info',
+            message: `발굴은 완료됐지만 Gemini가 사용할 만한 신규 키워드를 반환하지 않았습니다.${selectedSeeds ? ` 선택 시드: ${selectedSeeds}` : ''}`,
+          });
+        }
       } else {
-        alert('키워드 발굴에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        const errorMessage = data.error || '키워드 발굴에 실패했습니다. 잠시 후 다시 시도해주세요.';
+        setNotice({ type: 'error', message: errorMessage });
+        alert(errorMessage);
       }
     } catch (e) {
-      alert('네트워크 오류가 발생했습니다.');
+      const errorMessage = '네트워크 오류가 발생했습니다. 배포 함수 시간 초과나 연결 문제일 수 있습니다.';
+      setNotice({ type: 'error', message: errorMessage });
+      alert(errorMessage);
     } finally {
       setIsDiscovering(false);
     }
@@ -172,6 +201,18 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
           )}
         </button>
       </div>
+
+      {notice && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          notice.type === 'success'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/60 dark:text-emerald-300'
+            : notice.type === 'error'
+            ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900/60 dark:text-red-300'
+            : 'bg-cyan-50 border-cyan-200 text-cyan-700 dark:bg-cyan-950/30 dark:border-cyan-900/60 dark:text-cyan-300'
+        }`}>
+          {notice.message}
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 pb-0">

@@ -5,6 +5,10 @@ import { DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/c
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 const REDIS_KEY = 'admin:discovered_keywords';
 
+export const config = {
+  maxDuration: 60,
+};
+
 interface DiscoveredKeyword {
   id: string;
   seed: string;
