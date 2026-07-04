@@ -271,6 +271,9 @@ const BANNED_REPLACEMENTS: Array<[RegExp, string]> = [
   [/기후위기 쓰나미/g, "기후 리스크 확대"],
   [/지구의 미래를 위해/g, "배출 기준을 맞추기 위해"],
   [/더 나은 내일/g, "다음 규제 시점"],
+  [/지금\s*당장/g, "먼저"],
+  [/놀라운/g, "확인할"],
+  [/충격적인/g, "예상 밖의"],
 ];
 
 function sanitizeBannedExpressions(text: string): string {
@@ -311,6 +314,27 @@ function splitPlainParagraph(text: string, maxLength = 190): string[] {
   return chunks;
 }
 
+function ensureComparisonTable(html: string): string {
+  if (/<table\b/i.test(html)) return html;
+
+  const tableHtml = `
+<table>
+  <thead>
+    <tr><th>확인 항목</th><th>실무 질문</th><th>먼저 볼 자료</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>적용 대상</td><td>우리 회사나 거래처가 직접 영향을 받는가?</td><td>정부 고시, 규제 로드맵</td></tr>
+    <tr><td>시행 시점</td><td>계약, 조달, 보고 일정 중 어느 단계가 먼저 바뀌는가?</td><td>부처 보도자료, 국제기구 문서</td></tr>
+    <tr><td>대응 비용</td><td>인증, 데이터 수집, 공급망 확인에 예산이 필요한가?</td><td>기업 공시, 산업 보고서</td></tr>
+  </tbody>
+</table>`;
+
+  if (/<h2[^>]*>/i.test(html)) {
+    return html.replace(/(<h2[^>]*>[\s\S]*?<\/h2>)/i, `$1\n${tableHtml}`);
+  }
+
+  return `${tableHtml}\n${html}`;
+}
 function normalizeParagraphLengths(html: string): string {
   return html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (full, attrs, inner) => {
     const plain = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -326,8 +350,8 @@ function normalizeParagraphLengths(html: string): string {
 }
 
 function applyQualityGateGuards(title: string, html: string): { title: string; html: string } {
-  const safeTitle = sanitizeBannedExpressions(title);
-  const safeHtml = normalizeParagraphLengths(sanitizeBannedExpressions(html));
+  const safeTitle = sanitizeBannedExpressions(title).replace(/!{2,}/g, "!");
+  const safeHtml = ensureComparisonTable(normalizeParagraphLengths(sanitizeBannedExpressions(html)));
   return { title: safeTitle, html: safeHtml };
 }
 async function fetchRelatedPosts(category: string, currentTitle: string): Promise<{title: string, link: string}[]> {
