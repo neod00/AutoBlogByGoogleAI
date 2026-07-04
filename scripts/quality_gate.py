@@ -31,7 +31,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # ═══════════════════════════════════════════════════════════════
 
 MIN_CONTENT_LENGTH = 800        # 최소 글자 수 (HTML 태그 제외 순수 텍스트)
-TARGET_MAX_CONTENT_LENGTH = 5500  # 자동 발행용 목표 상한 (레퍼런스/CTA 포함 순수 텍스트)
+TARGET_MAX_CONTENT_LENGTH = 7500  # 자동 발행용 목표 상한 (레퍼런스/CTA 포함 순수 텍스트)
 MAX_CONTENT_LENGTH = 50000      # 비정상적으로 긴 글 (AI 무한 반복 의심)
 MIN_HEADINGS = 2                # 최소 H2/H3 소제목 수
 MIN_TITLE_LENGTH = 5            # 제목 최소 글자 수
