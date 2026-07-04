@@ -50,6 +50,8 @@ jobs:
         id: generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
           PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'review' }}

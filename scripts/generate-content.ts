@@ -13,15 +13,16 @@ import { resolve } from "path";
 
 // ── Gemini API ──────────────────────────────────────────────
 import { GoogleGenAI } from "@google/genai";
+import { generateContentWithAiFallback, hasOpenAIKey } from "../api/_lib/aiProviders.js";
 import { XMLParser } from "fast-xml-parser";
 
 const API_KEY = process.env.GEMINI_API_KEY || "";
-if (!API_KEY) {
-  console.error("ERROR: GEMINI_API_KEY not set");
+if (!API_KEY && !hasOpenAIKey()) {
+  console.error("ERROR: GEMINI_API_KEY or OPENAI_API_KEY not set");
   process.exit(1);
 }
 
-const genAI = new GoogleGenAI({ apiKey: API_KEY });
+const genAI = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 // ── Load directives ─────────────────────────────────────────
 import { fileURLToPath } from "url";
@@ -88,10 +89,10 @@ async function fetchAndInjectImages(post: string): Promise<string> {
     console.error("[images] Analyzing post for image placements...");
     const analysisPrompt = `${imagePlacementInstructions}\n\n---\n\n다음 블로그 글을 분석하고 이미지 배치 정보를 생성하세요:\n\n${post}`;
 
-    const analysisResult = await genAI.models.generateContent({
+    const analysisResult = await generateContentWithAiFallback(genAI, {
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
-    });
+    }, 1, "[images]");
 
     const analysisText = (analysisResult as any).text || "";
 
@@ -216,10 +217,10 @@ ${catList}
 답 (숫자만):`;
 
   try {
-    const result = await genAI.models.generateContent({
+    const result = await generateContentWithAiFallback(genAI, {
       model: "gemini-2.5-flash",
       contents: prompt,
-    });
+    }, 1, "[classify]");
     const num = parseInt((result.text || "8").trim());
     return CATEGORIES[num] || "기타";
   } catch {
@@ -329,33 +330,16 @@ async function main() {
     ${templateDirective}
   `;
 
-  console.error("[generate] Calling Gemini API...");
+  console.error("[generate] Calling AI provider...");
 
-  let result: any;
-  const maxRetries = 3;
-  let attempt = 0;
-
-  while (attempt <= maxRetries) {
-    try {
-      result = await genAI.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseModalities: ["TEXT"],
-        },
-      });
-      break;
-    } catch (e: any) {
-      attempt++;
-      if (attempt > maxRetries || (!e.message?.includes("429") && !e.message?.includes("503"))) throw e;
-      const delay = Math.pow(2, attempt) * 2000;
-      console.error(`[generate] Rate limit or high demand (503). Retry in ${delay}ms...`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-
-  if (!result) throw new Error("Failed to generate content");
+  const result = await generateContentWithAiFallback(genAI, {
+    model: "gemini-2.5-flash",
+    contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+    config: {
+      tools: [{ googleSearch: {} }],
+      responseModalities: ["TEXT"],
+    },
+  }, 2, "[generate]");
 
   const rawText = result.text || "";
 

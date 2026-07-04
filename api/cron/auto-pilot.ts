@@ -1,14 +1,28 @@
 import { redis } from '../_lib/redis.js';
 
 const CRON_SECRET = process.env.CRON_SECRET;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 const APP_URL = process.env.APP_URL || '';
 
+function isAuthorized(req: any): boolean {
+    const authHeader = String(req.headers.authorization || '');
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.replace('Bearer ', '').trim() : '';
+    const queryKey = typeof req.query.key === 'string' ? req.query.key : '';
+    const validSecrets = [CRON_SECRET, ADMIN_PASSWORD].filter((secret): secret is string => Boolean(secret));
+
+    if (validSecrets.length === 0) {
+        console.error('[AutoPilot] No CRON_SECRET or ADMIN_PASSWORD configured.');
+        return false;
+    }
+
+    return validSecrets.includes(bearerToken) || validSecrets.includes(queryKey);
+}
+
 export default async function handler(req: any, res: any) {
     // 1. Authentication
-    const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${CRON_SECRET}` && req.query.key !== CRON_SECRET) {
+    if (!isAuthorized(req)) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 

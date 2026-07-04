@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { isAuthenticated } from '../_lib/redis.js';
 import { CLIMATE_INSIGHT_DEFAULT_SEEDS } from '../_lib/climateSeeds.js';
+import { generateContentWithAiFallback, hasOpenAIKey } from '../_lib/aiProviders.js';
 import { getGeminiErrorStatusCode, getPublicGeminiErrorMessage } from '../_lib/geminiErrors.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
@@ -38,12 +39,12 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!API_KEY) {
-    return res.status(500).json({ error: 'API_KEY not set' });
+  if (!API_KEY && !hasOpenAIKey()) {
+    return res.status(500).json({ error: 'GEMINI_API_KEY or OPENAI_API_KEY not set' });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     const currentSeeds = req.body?.currentSeeds || CLIMATE_INSIGHT_DEFAULT_SEEDS.join(', ');
 
@@ -89,12 +90,12 @@ IMPORTANT:
 - "기타", "일상", "잡담", "화제성 뉴스" 성격의 추천은 만들지 않습니다.
 - 검색 결과에서 근거가 약한 키워드는 추천하지 않습니다.`;
 
-    console.log('[recommend-seeds] Calling Gemini with Google Search...');
-    const response = await ai.models.generateContent({
+    console.log('[recommend-seeds] Calling AI provider with web search...');
+    const response = await generateContentWithAiFallback(ai, {
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: { tools: [{ googleSearch: {} }] },
-    });
+    }, 1, '[recommend-seeds]');
 
     const recommendations = parseRecommendations(response.text || "");
     return res.status(200).json({ recommendations });

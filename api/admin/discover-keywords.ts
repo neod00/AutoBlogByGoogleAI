@@ -1,11 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { redis, isAuthenticated } from '../_lib/redis.js';
 import { DEFAULT_DAILY_TOPIC, parseSeedList, selectSeedsForRun } from '../_lib/climateSeeds.js';
+import { generateContentWithAiFallback, hasOpenAIKey } from '../_lib/aiProviders.js';
 import {
   getGeminiErrorStatusCode,
   getPublicGeminiErrorMessage,
   isGeminiUsageLimitError,
-  isRetryableGeminiError,
 } from '../_lib/geminiErrors.js';
 
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
@@ -37,24 +37,6 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function generateContentWithRetry(ai: any, params: any, maxRetries = 1) {
-  let attempt = 0;
-  while (attempt <= maxRetries) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (e: any) {
-      attempt++;
-      const isRetryable = isRetryableGeminiError(e);
-      if (attempt > maxRetries || !isRetryable) {
-        throw e;
-      }
-      const waitTime = Math.pow(2, attempt) * 2000;
-      console.warn(`[API Retry] Temporary Gemini issue. Retrying in ${waitTime}ms... (Attempt ${attempt}/${maxRetries})`);
-      await delay(waitTime);
-    }
-  }
-}
-
 function parseJsonArray(text: string): any[] {
   const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
   const parsed = JSON.parse(cleanText);
@@ -81,11 +63,11 @@ Google Search 결과를 사용해 최근 6~12개월 사이 실제로 확인되�
 4. 최신 변화가 명확하지 않으면 "최신 변화 없음"이라고 명시합니다.`;
 
   console.log(`  [Step 1] Fact checking "${seed}"...`);
-  const factResponse = await generateContentWithRetry(ai, {
+  const factResponse = await generateContentWithAiFallback(ai, {
     model: 'gemini-2.5-flash',
     contents: factPrompt,
     config: { tools: [{ googleSearch: {} }] },
-  });
+  }, 1, '[keyword-discovery]');
 
   const factText = factResponse.text || "최신 정보 없음";
 
@@ -123,10 +105,10 @@ IMPORTANT:
 - 최신성이 필요한 글에만 연도를 넣고, evergreen 가이드에는 불필요한 연도를 넣지 않습니다.`;
 
   console.log(`  [Step 2] Generating JSON for "${seed}"...`);
-  const response = await generateContentWithRetry(ai, {
+  const response = await generateContentWithAiFallback(ai, {
     model: 'gemini-2.5-flash',
     contents: generatePrompt,
-  });
+  }, 1, '[keyword-discovery]');
 
   try {
     const parsed = parseJsonArray(response.text || "");
@@ -156,8 +138,8 @@ IMPORTANT:
 }
 
 async function discoverKeywords(seeds: string[]): Promise<{ keywords: DiscoveredKeyword[]; errors: string[] }> {
-  if (!API_KEY) throw new Error("API_KEY not set");
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
+  if (!API_KEY && !hasOpenAIKey()) throw new Error("GEMINI_API_KEY or OPENAI_API_KEY not set");
+  const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
   const selectedSeeds = seeds.slice(0, MAX_SEEDS_PER_RUN);
   const allKeywords: DiscoveredKeyword[] = [];
   const errors: string[] = [];

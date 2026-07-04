@@ -54,6 +54,8 @@ auto-publish.yml
 | Secret | 설명 |
 | --- | --- |
 | `GEMINI_API_KEY` | 글 생성과 키워드 발굴용 Gemini API 키 |
+| `OPENAI_API_KEY` | Gemini 한도 초과 시 글 생성/키워드 발굴 fallback용 OpenAI API 키 |
+| `OPENAI_MODEL` | 선택 사항. OpenAI fallback 모델 |
 | `PEXELS_API_KEY` | 이미지 검색용 API 키 |
 | `TISTORY_COOKIES_B64` | 티스토리 로그인 쿠키를 Base64로 인코딩한 값 |
 | `TISTORY_KAKAO_ID` | 쿠키 만료 시 카카오 재로그인에 사용할 ID |
@@ -80,17 +82,20 @@ auto-publish.yml
 | `KEYWORD_MAX_SEEDS_PER_RUN` | 키워드 발굴 1회 최대 시드 수. 기본 `2` |
 | `KEYWORD_MAX_QUEUE_ADD` | 키워드 발굴 1회 큐 추가 최대 개수. 기본 `3` |
 | `KEYWORD_MIN_PENDING_TOPICS` | pending 큐가 이 개수 이상이면 발굴 생략. 기본 `4` |
+| `OPENAI_API_KEY` | Gemini 한도 초과 시 관리자 키워드 발굴 fallback용 OpenAI API 키 |
+| `OPENAI_MODEL` 또는 `KEYWORD_OPENAI_MODEL` | OpenAI fallback 모델. 기본 `gpt-4.1-mini` |
 
 ## 운영 규칙
 
 - 오토파일럿은 2시간마다 호출되지만 KST 09:00~23:59에만 발행을 시도한다.
 - Vercel Hobby는 하루 1회 초과 Cron 배포가 실패하므로, 2시간 오토파일럿 호출은 Vercel Cron이 아니라 GitHub Actions schedule로 실행한다.
+- 오토파일럿 API는 `CRON_SECRET` 또는 `ADMIN_PASSWORD` 중 하나가 맞으면 인증된다. GitHub Actions는 `CRON_SECRET`을 query key로, `ADMIN_PASSWORD`를 Authorization header로 함께 보내 Vercel/GitHub secret 불일치에 대비한다.
 - 마지막 발행 후 48시간이 지나면 발행 확률은 100%가 된다.
 - 12시간 이내에는 1%, 12~24시간은 5%, 24~36시간은 10%, 36~48시간은 25% 확률로 시도한다.
 - 오토파일럿은 Gemini를 호출하지 않는다. 키워드 보충과 SEO 시드 키워드 주간 갱신은 `daily-digest`가 담당한다.
 - 발행 시작 시 주제 상태는 `publishing`이 되고, GitHub Actions 결과에 따라 `published` 또는 `failed`로 변경된다.
 - 쿠키가 만료되면 발행 스크립트가 카카오 로그인을 시도하고, 계정에 2FA가 켜져 있으면 카카오톡 승인이 필요하다.
-- GitHub 수동 진단 워크플로우를 사용할 때는 GitHub `CRON_SECRET`과 Vercel `CRON_SECRET` 값이 같아야 한다.
+- GitHub 수동 진단 워크플로우에서 401이 나면 GitHub `ADMIN_PASSWORD`와 Vercel `ADMIN_PASSWORD`를 먼저 맞추고, 필요하면 `CRON_SECRET`도 동일하게 맞춘다.
 
 ## 쿠키 Base64 인코딩
 

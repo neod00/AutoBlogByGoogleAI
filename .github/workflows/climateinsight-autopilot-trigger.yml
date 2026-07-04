@@ -12,5 +12,5 @@ jobs:
       - name: Trigger Climate Insight AutoPilot API
         run: |
           curl --fail-with-body -sS -X POST "https://auto-blog-by-google-ai.vercel.app/api/cron/auto-pilot?key=${{ secrets.CRON_SECRET }}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer ${{ secrets.ADMIN_PASSWORD }}" \
             -H "Content-Type: application/json"

@@ -2,22 +2,22 @@
 
 ## 개요
 
-기후인사이트는 사용자가 매번 키워드를 직접 넣지 않아도, 블로그 성격에 맞는 기본 시드 풀을 바탕으로 SEO 롱테일 키워드를 자동 발굴한다. 또한 `SEO 시드 키워드` 설정값도 기본 7일마다 최신 기후/ESG 이슈에 맞춰 자동 갱신한다. 다만 Gemini 호출 비용을 통제하기 위해 큐가 충분할 때는 롱테일 발굴을 생략하고, 한 번에 처리하는 시드 수를 작게 유지한다.
+기후인사이트는 사용자가 매번 키워드를 직접 넣지 않아도, 블로그 성격에 맞는 기본 시드 풀을 바탕으로 SEO 롱테일 키워드를 자동 발굴한다. 또한 `SEO 시드 키워드` 설정값도 기본 7일마다 최신 기후/ESG 이슈에 맞춰 자동 갱신한다. 다만 AI API 호출 비용을 통제하기 위해 큐가 충분할 때는 롱테일 발굴을 생략하고, 한 번에 처리하는 시드 수를 작게 유지한다.
 
 ## 기본 흐름
 
 ```text
 기본/사용자 시드 키워드
-  -> 7일 경과 시 Gemini + Google Search로 시드 목록 갱신
-  -> Gemini + Google Search로 최신 이슈 확인
-  -> Gemini로 SEO 롱테일 후보 생성
+  -> 7일 경과 시 AI provider + web search로 시드 목록 갱신
+  -> AI provider + web search로 최신 이슈 확인
+  -> AI provider로 SEO 롱테일 후보 생성
   -> 중복 후보 제거
   -> admin:discovered_keywords 저장
   -> admin:topics_queue에 일부 자동 추가
   -> 이메일 리포트 발송
 ```
 
-오토파일럿은 2시간마다 발행 여부만 판단한다. 오토파일럿 실행 시점에는 Gemini를 새로 호출하지 않고, 이미 채워진 `admin:topics_queue`의 pending 주제만 사용한다.
+오토파일럿은 2시간마다 발행 여부만 판단한다. 오토파일럿 실행 시점에는 AI API를 새로 호출하지 않고, 이미 채워진 `admin:topics_queue`의 pending 주제만 사용한다.
 
 ## 관련 파일
 
@@ -28,6 +28,7 @@
 | `api/admin/recommend-seeds.ts` | 기후인사이트 성격에 맞는 시드 추천 API |
 | `api/cron/daily-digest.ts` | 자동 키워드 발굴/이메일 리포트 크론 |
 | `api/cron/auto-pilot.ts` | 발행 대기열 기반 자동 발행 트리거 |
+| `api/_lib/aiProviders.ts` | Gemini/OpenAI 호출과 fallback 처리 |
 | `components/admin/KeywordDiscovery.tsx` | 관리자 키워드 발굴 화면 |
 | `components/admin/AdminDashboard.tsx` | 시드 설정, 추천 시드, 오토파일럿 설정 화면 |
 
@@ -40,7 +41,7 @@
 
 ## 기본 시드 정책
 
-`admin:settings.dailyTopic` 또는 `DAILY_TOPIC`이 비어 있으면 `api/_lib/climateSeeds.ts`의 `CLIMATE_INSIGHT_DEFAULT_SEEDS`를 사용한다. `daily-digest`는 기본 7일마다 Gemini 1회와 Google Search Grounding으로 다음 주에 쓸 시드 키워드 목록을 추천받아 `admin:settings.dailyTopic`에 다시 저장한다.
+`admin:settings.dailyTopic` 또는 `DAILY_TOPIC`이 비어 있으면 `api/_lib/climateSeeds.ts`의 `CLIMATE_INSIGHT_DEFAULT_SEEDS`를 사용한다. `daily-digest`는 기본 7일마다 AI provider 1회와 web search로 다음 주에 쓸 시드 키워드 목록을 추천받아 `admin:settings.dailyTopic`에 다시 저장한다.
 
 기본 시드는 다음 범주를 우선한다.
 
@@ -53,7 +54,7 @@
 - 폐배터리, 전기차 배터리 정보 공개, 기후기술
 - 기후금융, 녹색채권, K-택소노미
 
-## Gemini 비용 보호 기준
+## AI API 비용 보호 기준
 
 기본값은 비용 부담을 줄이는 쪽으로 잡는다.
 
@@ -63,22 +64,25 @@
 - `KEYWORD_MAX_SEEDS_PER_RUN`: 자동/수동 발굴 1회당 처리할 최대 시드 수. 기본값 `2`.
 - `KEYWORD_MAX_QUEUE_ADD`: 자동 발굴 1회당 발행 대기열에 넣을 최대 글감 수. 기본값 `3`.
 - `KEYWORD_MIN_PENDING_TOPICS`: pending 큐가 이 개수 이상이면 자동 발굴을 생략한다. 기본값 `4`.
-- 시드 키워드 자동 갱신은 갱신일에 Gemini 1회 호출을 사용한다.
-- 한 시드는 Gemini 2회 호출을 사용한다.
-  - 1회: Google Search Grounding으로 최신 사실 확인
+- `OPENAI_API_KEY`: Gemini 한도 초과 시 OpenAI fallback에 사용할 API 키.
+- `KEYWORD_AI_PROVIDER`: `openai` 또는 `openai_first`로 설정하면 키워드 발굴/시드 추천에 OpenAI를 먼저 사용한다. 기본값은 Gemini 우선이다.
+- `KEYWORD_OPENAI_MODEL` 또는 `OPENAI_MODEL`: OpenAI fallback 모델. 기본값 `gpt-4.1-mini`.
+- 시드 키워드 자동 갱신은 갱신일에 AI provider 1회 호출을 사용한다.
+- 한 시드는 AI provider 2회 호출을 사용한다.
+  - 1회: web search로 최신 사실 확인
   - 1회: 확인된 사실 기반 SEO 후보 JSON 생성
-- 따라서 기본 자동 발굴 1회 예상 Gemini 호출 수는 평소 최대 `4회`, 시드 갱신일에는 최대 `5회`다.
+- 따라서 기본 자동 발굴 1회 예상 AI API 호출 수는 평소 최대 `4회`, 시드 갱신일에는 최대 `5회`다.
 
 운영 원칙:
 
-- pending 큐가 4개 이상이면 `daily-digest`는 롱테일 키워드 발굴용 Gemini 호출을 생략한다. 단, 시드 갱신 주기가 도래한 경우 시드 갱신용 Gemini 1회는 먼저 실행될 수 있다.
+- pending 큐가 4개 이상이면 `daily-digest`는 롱테일 키워드 발굴용 AI API 호출을 생략한다. 단, 시드 갱신 주기가 도래한 경우 시드 갱신용 AI API 1회는 먼저 실행될 수 있다.
 - pending 큐가 부족할 때만 하루 크론에서 새 키워드를 보충한다.
 - 오토파일럿은 발행만 담당하고, 빈 큐를 이유로 즉석 키워드 발굴을 실행하지 않는다.
 - 수동 발굴 버튼도 동일하게 기본 최대 2개 시드만 처리한다.
-- 수동 발굴 API는 Gemini + Google Search 호출 때문에 최대 60초까지 실행될 수 있도록 `maxDuration`을 명시한다.
+- 수동 발굴 API는 AI provider + web search 호출 때문에 최대 60초까지 실행될 수 있도록 `maxDuration`을 명시한다.
 - 수동 발굴 결과가 모두 기존 대기열/기존 키워드와 중복되면 화면에는 신규 추가 0개로 안내한다.
 - Gemini가 `RESOURCE_EXHAUSTED`, 월간 지출 한도(`monthly spending cap`), 쿼터 초과를 반환하면 재시도하지 않는다. 재시도해도 성공 가능성이 낮고 Vercel 60초 타임아웃만 유발하기 때문이다.
-- 지출 한도/사용량 한도 초과는 관리자 화면에 명확한 오류로 표시하고, Google AI Studio의 Billing/Spend cap 설정을 확인하도록 안내한다.
+- `OPENAI_API_KEY`가 있으면 Gemini 지출 한도/사용량 한도 초과 시 OpenAI Responses API로 fallback한다. OpenAI 키도 없으면 관리자 화면에 명확한 오류를 표시하고, Google AI Studio의 Billing/Spend cap 설정을 확인하도록 안내한다.
 
 ## 키워드 선정 기준
 
