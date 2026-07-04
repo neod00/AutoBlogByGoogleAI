@@ -239,6 +239,97 @@ function tokenizeForRelatedPosts(text: string): string[] {
     .slice(0, 20);
 }
 
+const BANNED_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/자리매김/g, "위치를 갖게 됨"],
+  [/자리 잡/g, "정착하"],
+  [/원년/g, "시작 시기"],
+  [/서막/g, "초기 단계"],
+  [/이정표/g, "기준점"],
+  [/쓰나미/g, "큰 변화"],
+  [/파도/g, "흐름"],
+  [/본격화/g, "확대"],
+  [/주역/g, "핵심 참여자"],
+  [/진화/g, "개선"],
+  [/선제적/g, "미리 준비한"],
+  [/변곡점/g, "전환 시점"],
+  [/잠재력/g, "가능성"],
+  [/패러다임/g, "기준"],
+  [/지평/g, "범위"],
+  [/주목할 만/g, "확인할 만"],
+  [/장악/g, "확대"],
+  [/혁신을 가져올/g, "변화를 만들"],
+  [/열쇠입니다/g, "중요합니다"],
+  [/달려 있습니다/g, "영향을 받습니다"],
+  [/성공의 비결/g, "실행 기준"],
+  [/체계적으로/g, "순서대로"],
+  [/지 않을 수 없습니다/g, "해야 합니다"],
+  [/할 때입니다/g, "확인할 시점입니다"],
+  [/지속 가능한 미래/g, "배출 감축 목표"],
+  [/친환경 패러다임/g, "저탄소 기준"],
+  [/녹색 혁명/g, "저탄소 전환"],
+  [/탄소중립의 원년/g, "탄소중립 실행 초기"],
+  [/기후위기 쓰나미/g, "기후 리스크 확대"],
+  [/지구의 미래를 위해/g, "배출 기준을 맞추기 위해"],
+  [/더 나은 내일/g, "다음 규제 시점"],
+];
+
+function sanitizeBannedExpressions(text: string): string {
+  return BANNED_REPLACEMENTS.reduce(
+    (current, [pattern, replacement]) => current.replace(pattern, replacement),
+    text
+  );
+}
+
+function splitPlainParagraph(text: string, maxLength = 190): string[] {
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .match(/[^.!?。]+[.!?。]?/g) || [text.trim()];
+
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences.map(s => s.trim()).filter(Boolean)) {
+    const next = current ? `${current} ${sentence}` : sentence;
+    if (next.length > maxLength && current) {
+      chunks.push(current);
+      current = sentence;
+    } else if (sentence.length > maxLength) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+      for (let i = 0; i < sentence.length; i += maxLength) {
+        chunks.push(sentence.slice(i, i + maxLength));
+      }
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function normalizeParagraphLengths(html: string): string {
+  return html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (full, attrs, inner) => {
+    const plain = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (plain.length <= 200) return full;
+
+    const hasNestedHtml = /<[^>]+>/.test(inner);
+    if (hasNestedHtml) return full;
+
+    return splitPlainParagraph(plain)
+      .map(chunk => `<p${attrs}>${chunk}</p>`)
+      .join("\n");
+  });
+}
+
+function applyQualityGateGuards(title: string, html: string): { title: string; html: string } {
+  const safeTitle = sanitizeBannedExpressions(title);
+  const safeHtml = normalizeParagraphLengths(sanitizeBannedExpressions(html));
+  return { title: safeTitle, html: safeHtml };
+}
 async function fetchRelatedPosts(category: string, currentTitle: string): Promise<{title: string, link: string}[]> {
   try {
     console.error("[generate] Fetching RSS feed for related posts...");
@@ -420,8 +511,11 @@ async function main() {
     post += ctaHtml;
   }
 
+  // ── Deterministic quality guards ──
+  const guarded = applyQualityGateGuards(title, post);
+
   // ── Output JSON ──
-  const output = { title, html: post, tags, category };
+  const output = { title: guarded.title, html: guarded.html, tags, category };
   console.log(JSON.stringify(output, null, 2));
 }
 
