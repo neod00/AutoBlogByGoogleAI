@@ -250,7 +250,9 @@ const BANNED_REPLACEMENTS: Array<[RegExp, string]> = [
   [/본격화/g, "확대"],
   [/주역/g, "핵심 참여자"],
   [/진화/g, "개선"],
-  [/선제적/g, "미리 준비한"],
+  [/선제적으로/g, "먼저"],
+  [/선제적인/g, "사전"],
+  [/선제적/g, "사전"],
   [/변곡점/g, "전환 시점"],
   [/잠재력/g, "가능성"],
   [/패러다임/g, "기준"],
@@ -280,7 +282,110 @@ function sanitizeBannedExpressions(text: string): string {
   return BANNED_REPLACEMENTS.reduce(
     (current, [pattern, replacement]) => current.replace(pattern, replacement),
     text
-  );
+  )
+    .replace(/미리 준비한으로/g, "사전 준비 형태로")
+    .replace(/미리 준비한인/g, "초기")
+    .replace(/사전으로/g, "먼저")
+    .replace(/사전인/g, "초기")
+    .replace(/사전 대응적/g, "사전 대응")
+    .replace(/사전 준비적/g, "사전 준비");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeSourceUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    const direct = parsed.searchParams.get("url") || parsed.searchParams.get("q");
+    if (direct && /^https?:\/\//i.test(direct)) {
+      return direct;
+    }
+    if (
+      host.includes("google.") ||
+      host.includes("vertexaisearch.") ||
+      host.includes("googleusercontent.")
+    ) {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+type SourceRef = {
+  title: string;
+  publisher: string;
+  url: string;
+};
+
+function parseSourceLine(line: string): SourceRef | null {
+  const cleaned = line.replace(/^[-*]\s*/, "").trim();
+  if (!cleaned) return null;
+
+  const urlMatch = cleaned.match(/https?:\/\/[^\s)>\]]+/i);
+  const url = normalizeSourceUrl(urlMatch?.[0] || "");
+  const withoutUrl = urlMatch ? cleaned.replace(urlMatch[0], "").replace(/\s*[-–|]\s*$/, "").trim() : cleaned;
+  const parts = withoutUrl.split(/\s+[-–|]\s+/).map(part => part.trim()).filter(Boolean);
+
+  return {
+    title: parts[0] || withoutUrl,
+    publisher: parts.slice(1).join(" - "),
+    url,
+  };
+}
+
+function buildReferenceSection(sourceLines: string[], groundingChunks: any[]): string {
+  const sourceRefs = sourceLines
+    .map(parseSourceLine)
+    .filter((source): source is SourceRef => Boolean(source));
+
+  const groundingRefs: SourceRef[] = groundingChunks
+    .map((chunk: any) => ({
+      title: chunk?.web?.title || "",
+      publisher: "",
+      url: normalizeSourceUrl(chunk?.web?.uri || ""),
+    }))
+    .filter((source: SourceRef) => source.title || source.url);
+
+  const refs: SourceRef[] = [];
+  const seen = new Set<string>();
+
+  for (const source of [...sourceRefs, ...groundingRefs]) {
+    const key = (source.url || source.title).toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    refs.push(source);
+    if (refs.length >= 5) break;
+  }
+
+  if (refs.length === 0) return "";
+
+  let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;">';
+  refHtml += '<h2 style="font-size:1.2rem;color:#334155;margin-bottom:0.75rem;">근거와 참고자료</h2>';
+  refHtml += '<p style="font-size:0.92rem;color:#64748b;margin:0 0 0.75rem 0;">본문의 주요 수치와 규제 설명을 확인할 때 우선 볼 자료입니다.</p>';
+  refHtml += '<ul style="list-style:disc;padding-left:1.5rem;margin-top:0.75rem;font-size:0.92rem;color:#475569;">';
+
+  for (const source of refs) {
+    const label = escapeHtml(source.publisher ? `${source.title} - ${source.publisher}` : source.title);
+    refHtml += source.url
+      ? `<li style="margin-bottom:0.5rem;"><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:underline;">${label}</a></li>`
+      : `<li style="margin-bottom:0.5rem;">${label}</li>`;
+  }
+
+  refHtml += "</ul></div>";
+  return refHtml;
 }
 
 function splitPlainParagraph(text: string, maxLength = 190): string[] {
@@ -425,7 +530,7 @@ async function main() {
   const dateRangeText = "최신";
 
   const finalPrompt = `
-    Role: You are a professional tech blog writer.
+    Role: You are the senior editor of Climate Insight, a Korean climate/ESG business blog.
     Task: Write a high-quality blog post based on the User's Request and the following Directives.
     
     User Request:
@@ -437,6 +542,8 @@ async function main() {
     2. Do NOT include any conversational text.
     3. Do NOT output the "Work Order" or "Plan". Just execute it.
     4. Ensure all tags ([TITLE], [POST], etc.) are present.
+    5. Write in natural Korean sentences. Avoid mechanical replacements, slogan-like endings, and stiff AI summary tone.
+    6. In [SOURCES], prefer official/government/international-organization/company pages. Use this format when a URL is available: "자료 제목 - 기관/언론사 - https://...".
     
     DIRECTIVES:
     ${blogBase}
@@ -471,45 +578,20 @@ async function main() {
   // Strip accidental reference sections from POST
   post = post.replace(/<h[23][^>]*>\s*(참고|참고:|참고 자료|출처)[^<]*<\/h[23]>[\s\S]*?(?=<h[23]|$)/gi, "");
 
-  // Build reference section from grounding metadata
+  // Build a compact, visible reference section from model sources and grounding metadata.
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
-  const groundingUrls = (groundingMetadata?.groundingChunks || [])
-    .map((c: any) => ({ url: c?.web?.uri || "", domain: c?.web?.title || "" }))
-    .filter((u: any) => u.url)
-    .slice(0, 5);
-
-  const sourceTitles = sourcesMatch
+  const sourceLines = sourcesMatch
     ? sourcesMatch[1].trim().split("\n").map(s => s.trim()).filter(Boolean)
     : [];
-  const limitedSourceTitles = sourceTitles.slice(0, 5);
-
-  if (limitedSourceTitles.length > 0 || groundingUrls.length > 0) {
-    let refHtml = '<div class="references" style="margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb;">';
-    refHtml += '<details style="cursor:pointer;"><summary style="font-size:1.1rem;font-weight:bold;color:#475569;">📚 본문 출처 및 참고자료 (클릭하여 펼치기)</summary>';
-    refHtml += '<ul style="list-style:disc;padding-left:1.5rem;margin-top:1rem;font-size:0.9rem;color:#64748b;">';
-    const usedUrls = new Set<string>();
-
-    for (const st of limitedSourceTitles) {
-      let matchedUrl = "";
-      for (const g of groundingUrls) {
-        if (!usedUrls.has(g.url)) {
-          matchedUrl = g.url;
-          usedUrls.add(g.url);
-          break;
-        }
-      }
-      refHtml += matchedUrl
-        ? `<li style="margin-bottom:0.5rem;"><a href="${matchedUrl}" target="_blank" rel="noopener" style="color:#0ea5e9;text-decoration:underline;">${st}</a></li>`
-        : `<li style="margin-bottom:0.5rem;">${st}</li>`;
-    }
-
-    refHtml += "</ul></details></div>";
-    post += refHtml;
-  }
+  const referenceSection = buildReferenceSection(sourceLines, groundingMetadata?.groundingChunks || []);
 
   // ── Inject images from Pexels ──
   console.error("[generate] Fetching and injecting images...");
   post = await fetchAndInjectImages(post);
+
+  if (referenceSection) {
+    post += referenceSection;
+  }
 
   // ── Classify category ──
   console.error("[generate] Classifying category...");

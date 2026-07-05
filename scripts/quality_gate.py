@@ -93,8 +93,17 @@ COMPARISON_HINTS = [
 OFFICIAL_SOURCE_HINTS = [
     "환경부", "국토교통부", "산업통상자원부", "기획재정부", "금융위원회",
     "공정거래위원회", "한국에너지공단", "한국환경공단", "온실가스종합정보센터",
-    "European Commission", "EU", "IEA", "IPCC", "UNFCCC", "OECD",
+    "European Commission", "EU", "IATA", "ICAO", "IEA", "IPCC", "UNFCCC", "OECD",
     "SEC", "EPA", "보도자료", "공시", "annual report", "sustainability report",
+]
+
+AWKWARD_REPLACEMENT_PHRASES = [
+    "미리 준비한으로", "미리 준비한인", "사전으로", "사전인",
+    "사전 대응적", "사전 준비적", "기계적으로 치환",
+]
+
+LOW_QUALITY_SOURCE_HOST_HINTS = [
+    "google.", "vertexaisearch.", "googleusercontent.", "search.app",
 ]
 
 
@@ -128,9 +137,24 @@ def count_tables(html: str) -> int:
     return len(re.findall(r'<table\b', html, re.IGNORECASE))
 
 
+def extract_links(html: str) -> list:
+    """본문 링크 URL 목록 추출"""
+    return re.findall(r'<a\s+[^>]*href=["\']([^"\']+)["\']', html, re.IGNORECASE)
+
+
 def count_links(html: str) -> int:
     """본문 링크 수 카운트"""
-    return len(re.findall(r'<a\s+[^>]*href=', html, re.IGNORECASE))
+    return len(extract_links(html))
+
+
+def is_external_source_link(url: str) -> bool:
+    lower = url.lower()
+    return lower.startswith("http") and "climate-insight.tistory.com" not in lower
+
+
+def is_low_quality_source_url(url: str) -> bool:
+    lower = url.lower()
+    return any(host in lower for host in LOW_QUALITY_SOURCE_HOST_HINTS)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -249,6 +273,16 @@ def check_banned_expressions(report: QualityReport, title: str, plain_text: str)
         report.pass_check("금지 표현", "위반 없음")
 
 
+def check_awkward_replacement_phrases(report: QualityReport, title: str, plain_text: str):
+    """자동 치환으로 생긴 어색한 조사/문장 흔적 감지"""
+    combined = f"{title} {plain_text}"
+    found = [phrase for phrase in AWKWARD_REPLACEMENT_PHRASES if phrase in combined]
+
+    if found:
+        report.fail_check("문장 자연스러움", ", ".join(found))
+    else:
+        report.pass_check("문장 자연스러움", "어색한 치환 흔적 없음")
+
 def check_paragraph_lengths(report: QualityReport, paragraphs: list):
     """모바일 가독성을 해치는 긴 문단 감지"""
     long_lengths = [len(p) for p in paragraphs if len(p) > MAX_LONG_PARAGRAPH_CHARS]
@@ -297,12 +331,27 @@ def check_table_requirement(report: QualityReport, title: str, plain_text: str, 
 
 def check_source_quality(report: QualityReport, html: str, plain_text: str):
     """출처 링크와 1차 출처 힌트 검사"""
-    link_count = count_links(html)
+    links = extract_links(html)
+    link_count = len(links)
     if link_count == 0:
         report.fail_check("출처 링크", "본문에 링크가 없음")
         return
 
+    has_reference_section = 'class="references"' in html and "근거와 참고자료" in plain_text
+    source_links = [url for url in links if is_external_source_link(url)]
+    low_quality_links = [url for url in source_links if is_low_quality_source_url(url)]
+    direct_source_links = [url for url in source_links if not is_low_quality_source_url(url)]
     has_official_hint = any(hint.lower() in plain_text.lower() for hint in OFFICIAL_SOURCE_HINTS)
+
+    if not has_reference_section:
+        report.warn_check("출처 표시", "하단 근거와 참고자료 섹션 없음")
+    elif low_quality_links and not direct_source_links:
+        report.warn_check("출처 링크", "Google/검색 리다이렉트 링크만 감지됨")
+    elif not direct_source_links:
+        report.warn_check("출처 링크", "직접 외부 출처 URL 부족")
+    else:
+        report.pass_check("출처 링크", f"직접 외부 출처 {len(direct_source_links)}개")
+
     if not has_official_hint:
         report.warn_check("출처 품질", f"링크 {link_count}개, 공식/1차 출처 힌트 부족")
     else:
@@ -387,9 +436,15 @@ def check_completeness(report: QualityReport, html: str):
     open_tags = len(re.findall(r'<(h[23]|p|div|ul|ol|table)\b', html, re.IGNORECASE))
     close_tags = len(re.findall(r'</(h[23]|p|div|ul|ol|table)>', html, re.IGNORECASE))
     
-    # 마지막 문장이 마침표/물음표/느낌표로 끝나는지
-    plain = strip_html(html).strip()
-    ends_properly = plain and plain[-1] in '.!?。'
+    # 마지막 문장은 자동으로 붙는 출처/관련글 영역을 제외한 본문 기준으로 본다.
+    body_html = re.split(
+        r'<div[^>]*class=["\']references["\'][^>]*>|<div\s+style=["\'][^"\']*margin:\s*3rem',
+        html,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    plain = strip_html(body_html).strip() or strip_html(html).strip()
+    ends_properly = plain and (plain[-1] in '.!?。\”’' or '다음에 검색해볼 키워드' in plain[-120:])
     
     if abs(open_tags - close_tags) > 3:
         report.warn_check("글 완전성", f"HTML 태그 불일치 (열림 {open_tags} vs 닫힘 {close_tags})")
@@ -442,6 +497,7 @@ def main():
     check_tags(report, tags)
     check_images(report, image_count)
     check_banned_expressions(report, title, plain_text)
+    check_awkward_replacement_phrases(report, title, plain_text)
     check_paragraph_lengths(report, paragraphs)
     check_required_structure(report, html)
     check_table_requirement(report, title, plain_text, table_count)
