@@ -445,8 +445,8 @@ function normalizeParagraphLengths(html: string): string {
     const plain = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     if (plain.length <= 200) return full;
 
-    const hasNestedHtml = /<[^>]+>/.test(inner);
-    if (hasNestedHtml) return full;
+    const shouldPreserveHtml = /<(img|a|iframe|table|ul|ol|li|br)\b/i.test(inner);
+    if (shouldPreserveHtml) return full;
 
     return splitPlainParagraph(plain)
       .map(chunk => `<p${attrs}>${chunk}</p>`)
