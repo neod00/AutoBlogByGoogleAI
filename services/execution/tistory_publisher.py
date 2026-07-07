@@ -52,6 +52,7 @@ class TistoryPublisher:
         self.blog_url = blog_url.rstrip("/")
         self.login = login or TistoryAutoLogin()
         self.driver = None
+        self._auto_login_retry_used = False
 
     def _log(self, msg: str):
         self.login._log(msg)
@@ -103,6 +104,37 @@ class TistoryPublisher:
         except Exception:
             pass  # alert 없으면 무시
 
+    def _recover_login_after_redirect(self) -> bool:
+        """쿠키가 글쓰기 권한 세션으로 인정되지 않을 때 카카오 자동 로그인을 1회 시도한다."""
+        if self._auto_login_retry_used:
+            self._log("   ℹ️ 카카오 자동 재로그인은 이미 시도함")
+            return False
+
+        self._auto_login_retry_used = True
+        self._log("   🔐 쿠키가 글쓰기 권한을 통과하지 못해 카카오 자동 재로그인 시도")
+
+        previous_headless = getattr(self.login, "headless", False)
+        try:
+            self.login.close()
+        except Exception:
+            pass
+        self.driver = None
+
+        auto_login = TistoryAutoLogin.from_env(headless=previous_headless)
+        if auto_login.login(max_2fa_wait_minutes=5):
+            self.login = auto_login
+            self.driver = auto_login.get_driver()
+            self._log("   ✅ 카카오 자동 재로그인 성공")
+            return True
+
+        self._log("   ❌ 카카오 자동 재로그인 실패")
+        try:
+            auto_login.close()
+        except Exception:
+            pass
+        self.login = TistoryAutoLogin.from_env(headless=previous_headless)
+        self.driver = None
+        return False
     def _navigate_to_editor(self) -> bool:
         """글쓰기 페이지로 이동 (재시도 포함)"""
         from selenium.webdriver.common.by import By
@@ -139,15 +171,19 @@ class TistoryPublisher:
             # 로그인 페이지로 리다이렉트된 경우
             if "accounts.kakao.com" in current_url or "/login" in current_url:
                 self._log("   ⚠️ 로그인 페이지로 리다이렉트됨 — 쿠키 만료 가능")
-                # 쿠키 재로딩 시도
+
+                if self._recover_login_after_redirect():
+                    continue
+
+                # 최후 fallback: 쿠키 재로딩 1회 시도
                 try:
                     if self.login.login_with_cookies_only():
                         self.driver = self.login.get_driver()
                         self._log("   🔄 쿠키 재로딩 성공")
                     else:
                         self._log("   ❌ 쿠키 재로딩 실패")
-                except Exception:
-                    pass
+                except Exception as e:
+                    self._log(f"   ⚠️ 쿠키 재로딩 오류: {e}")
                 continue
 
             # 글쓰기 페이지 로딩 확인 (30초 대기)
