@@ -61,7 +61,7 @@
 - `KEYWORD_AUTO_REFRESH_SEEDS`: `SEO 시드 키워드` 자동 갱신 여부. 기본값은 활성화이며, `false`면 갱신하지 않는다.
 - `KEYWORD_SEED_REFRESH_INTERVAL_DAYS`: 시드 키워드 자동 갱신 주기. 기본값 `7`.
 - `KEYWORD_AUTO_REFRESH_SEED_COUNT`: 자동 갱신 때 저장할 시드 키워드 수. 기본값 `8`.
-- `KEYWORD_MAX_SEEDS_PER_RUN`: 자동/수동 발굴 1회당 처리할 최대 시드 수. 기본값 `2`.
+- `KEYWORD_MAX_SEEDS_PER_RUN`: 자동/수동 발굴 1회당 처리할 최대 시드 수. 자동 기본값 `2`, 관리자 수동 발굴 API 기본값 `1`.
 - `KEYWORD_MAX_QUEUE_ADD`: 자동 발굴 1회당 발행 대기열에 넣을 최대 글감 수. 기본값 `3`.
 - `KEYWORD_MIN_PENDING_TOPICS`: pending 큐가 이 개수 이상이면 자동 발굴을 생략한다. 기본값 `4`.
 - `OPENAI_API_KEY`: Gemini 한도 초과 시 OpenAI fallback에 사용할 API 키.
@@ -78,7 +78,7 @@
 - pending 큐가 4개 이상이면 `daily-digest`는 롱테일 키워드 발굴용 AI API 호출을 생략한다. 단, 시드 갱신 주기가 도래한 경우 시드 갱신용 AI API 1회는 먼저 실행될 수 있다.
 - pending 큐가 부족할 때만 하루 크론에서 새 키워드를 보충한다.
 - 오토파일럿은 발행만 담당하고, 빈 큐를 이유로 즉석 키워드 발굴을 실행하지 않는다.
-- 수동 발굴 버튼도 동일하게 기본 최대 2개 시드만 처리한다.
+- 자동 발굴은 기본 최대 2개 시드를 처리하고, 관리자 수동 발굴 API는 Vercel 60초 제한을 피하기 위해 기본 1개 시드만 처리한다. 추가 시드는 버튼을 다시 눌러 처리한다.
 - 수동 발굴 API는 AI provider + web search 호출 때문에 최대 60초까지 실행될 수 있도록 `maxDuration`을 명시한다.
 - 수동 발굴 결과가 모두 기존 대기열/기존 키워드와 중복되면 화면에는 신규 추가 0개로 안내한다.
 - Gemini가 `RESOURCE_EXHAUSTED`, 월간 지출 한도(`monthly spending cap`), 쿼터 초과를 반환하면 재시도하지 않는다. 재시도해도 성공 가능성이 낮고 Vercel 60초 타임아웃만 유발하기 때문이다.

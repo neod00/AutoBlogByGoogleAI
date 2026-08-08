@@ -30,7 +30,7 @@ interface DiscoveredKeyword {
   discoveredAt: string;
 }
 
-const MAX_SEEDS_PER_RUN = Number(process.env.KEYWORD_MAX_SEEDS_PER_RUN || 2);
+const MAX_SEEDS_PER_RUN = Number(process.env.KEYWORD_MAX_SEEDS_PER_RUN || 1);
 const DELAY_BETWEEN_CALLS_MS = 3000;
 
 function delay(ms: number): Promise<void> {
