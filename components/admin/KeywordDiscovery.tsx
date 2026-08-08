@@ -48,6 +48,7 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [filter, setFilter] = useState<'all' | 'discovered' | 'approved' | 'dismissed'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   const fetchKeywords = async () => {
@@ -58,6 +59,7 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
       if (res.ok) {
         const data = await res.json();
         setKeywords(data.keywords || []);
+        setSelectedIds(new Set());
       }
     } catch (e) {
       console.error('Fetch keywords error:', e);
@@ -88,6 +90,7 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setKeywords(data.keywords || []);
+        setSelectedIds(new Set());
         const newCount = Number(data.newCount || 0);
         const discoveredCount = Number(data.discoveredCount || 0);
         const selectedSeeds = Array.isArray(data.selectedSeeds) ? data.selectedSeeds.join(', ') : '';
@@ -152,11 +155,59 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
         headers: { 'Authorization': `Bearer ${token}` },
       });
       setKeywords(prev => prev.filter(k => k.id !== id));
+      setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; });
     } catch (e) {
       console.error('Delete error:', e);
     }
   };
 
+  const visibleIds = (filter === 'all' ? keywords : keywords.filter(k => k.status === filter)).map(keyword => keyword.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleIds.forEach(id => next.delete(id));
+      else visibleIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || !window.confirm('선택한 키워드 ' + ids.length + '개를 삭제하시겠습니까?')) return;
+    const res = await fetch('/api/admin/discover-keywords', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ ids }),
+    });
+    if (res.ok) {
+      setKeywords(prev => prev.filter(keyword => !selectedIds.has(keyword.id)));
+      setSelectedIds(new Set());
+    }
+  };
+
+  const deleteAll = async () => {
+    if (keywords.length === 0 || !window.confirm('키워드 발굴 목록 ' + keywords.length + '개를 모두 삭제하시겠습니까?')) return;
+    const res = await fetch('/api/admin/discover-keywords', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ all: true }),
+    });
+    if (res.ok) {
+      setKeywords([]);
+      setSelectedIds(new Set());
+    }
+  };
   const filteredKeywords = filter === 'all' ? keywords : keywords.filter(k => k.status === filter);
 
   const discoveredCount = keywords.filter(k => k.status === 'discovered').length;
@@ -245,6 +296,16 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
         ))}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 px-4 py-3">
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+          <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectVisible} disabled={visibleIds.length === 0} className="accent-cyan-600" />
+          현재 목록 전체 선택
+        </label>
+        <span className="text-xs text-slate-400">{selectedIds.size}개 선택</span>
+        <button type="button" onClick={deleteSelected} disabled={selectedIds.size === 0} className="px-3 py-1.5 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed dark:bg-red-900/30 dark:text-red-300">선택 삭제</button>
+        <button type="button" onClick={deleteAll} disabled={keywords.length === 0} className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed">전체 삭제</button>
+      </div>
+
       {/* Keyword Cards */}
       {filteredKeywords.length === 0 ? (
         <div className="text-center py-16 bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
@@ -277,6 +338,9 @@ const KeywordDiscovery: React.FC<KeywordDiscoveryProps> = ({ token, onAddToQueue
                 )}
 
                 <div className="p-5 pl-6">
+                  <label className="absolute top-4 right-4 flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+                    <input type="checkbox" checked={selectedIds.has(kw.id)} onChange={() => toggleSelection(kw.id)} className="accent-cyan-600" aria-label={kw.suggestedTitle + ' 선택'} />
+                  </label>
                   {/* Top badges row */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <span className="text-xs px-2.5 py-1 rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-400 font-semibold">

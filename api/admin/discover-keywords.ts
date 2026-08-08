@@ -266,14 +266,20 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'DELETE') {
-      const { id } = req.query;
-      if (!id) return res.status(400).json({ error: 'id required' });
-
       const keywords = await redis.get<DiscoveredKeyword[]>(REDIS_KEY) || [];
-      const filtered = keywords.filter(k => k.id !== id);
+      const requestedIds = Array.isArray(req.body?.ids)
+        ? req.body.ids.filter((id: unknown): id is string => typeof id === 'string')
+        : [];
+      const deleteAll = req.body?.all === true;
+      const queryId = typeof req.query.id === 'string' ? req.query.id : '';
+      const ids = requestedIds.length > 0 ? requestedIds : queryId ? [queryId] : [];
+
+      if (!deleteAll && ids.length === 0) return res.status(400).json({ error: 'id, ids, or all is required' });
+
+      const filtered = deleteAll ? [] : keywords.filter(k => !ids.includes(k.id));
       await redis.set(REDIS_KEY, filtered);
 
-      return res.status(200).json({ success: true });
+      return res.status(200).json({ success: true, deletedCount: keywords.length - filtered.length });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });

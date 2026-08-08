@@ -44,6 +44,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
   const [settings, setSettings] = useState({ recipientEmail: '', dailyTopic: '', autoPilot: false });
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(new Set());
   
   // New Topic Form
   const [newTitle, setNewTitle] = useState('');
@@ -71,6 +72,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
     if (res.ok) {
       const data = await res.json();
       setTopics(data.topics || []);
+      setSelectedTopicIds(new Set());
     }
     setIsRefreshing(false);
   };
@@ -146,6 +148,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
     fetchTopics();
   };
 
+  const toggleTopicSelection = (id: string) => {
+    setSelectedTopicIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelectedTopics = async () => {
+    const ids = [...selectedTopicIds];
+    if (ids.length === 0 || !window.confirm('선택한 발행 대기열 ' + ids.length + '개를 삭제하시겠습니까?')) return;
+    const res = await fetch('/api/admin/topics', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ ids }),
+    });
+    if (res.ok) {
+      setTopics(prev => prev.filter(topic => !selectedTopicIds.has(topic.id)));
+      setSelectedTopicIds(new Set());
+    }
+  };
+
+  const deleteAllTopics = async () => {
+    if (topics.length === 0 || !window.confirm('발행 대기열 ' + topics.length + '개를 모두 삭제하시겠습니까?')) return;
+    const res = await fetch('/api/admin/topics', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ all: true }),
+    });
+    if (res.ok) {
+      setTopics([]);
+      setSelectedTopicIds(new Set());
+    }
+  };
   const handleResetStatus = async (id: string) => {
     if (!window.confirm('실제로 발행이 진행 중일 수도 있습니다. 상태를 [발행 대기]로 초기화하시겠습니까?')) return;
     try {
@@ -378,6 +415,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                   </button>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-2 mb-4 text-sm text-slate-600 dark:text-slate-300">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={topics.length > 0 && topics.every(topic => selectedTopicIds.has(topic.id))} onChange={() => setSelectedTopicIds(prev => {
+                      const next = new Set(prev);
+                      const selectAll = topics.length > 0 && topics.every(topic => next.has(topic.id));
+                      topics.forEach(topic => selectAll ? next.delete(topic.id) : next.add(topic.id));
+                      return next;
+                    })} disabled={topics.length === 0} className="accent-cyan-600" />
+                    전체 선택
+                  </label>
+                  <span className="text-xs text-slate-400">{selectedTopicIds.size}개 선택</span>
+                  <button type="button" onClick={deleteSelectedTopics} disabled={selectedTopicIds.size === 0} className="px-3 py-1.5 text-sm rounded-lg bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed dark:bg-red-900/30 dark:text-red-300">선택 삭제</button>
+                  <button type="button" onClick={deleteAllTopics} disabled={topics.length === 0} className="px-3 py-1.5 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed">전체 삭제</button>
+                </div>
                 {topics.length === 0 ? (
                   <div className="text-center py-20 text-slate-500 bg-slate-100/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
                     대기 중인 주제가 없습니다.
@@ -385,7 +436,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                 ) : (
                   <div className="space-y-4">
                     {[...topics].reverse().map(topic => (
-                      <div key={topic.id} className="group flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:border-cyan-500 transition-colors">
+                      <div key={topic.id} className="flex items-start gap-3">
+                        <input type="checkbox" checked={selectedTopicIds.has(topic.id)} onChange={() => toggleTopicSelection(topic.id)} className="mt-1 accent-cyan-600 shrink-0" aria-label={topic.title + ' 선택'} />
+                        <div className="group flex-1 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:border-cyan-500 transition-colors">
                         
                         {editTopicId === topic.id ? (
                           <div className="flex-1 w-full space-y-3">
@@ -490,6 +543,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ token }) => {
                             </div>
                           </>
                         )}
+                      </div>
                       </div>
                     ))}
                   </div>

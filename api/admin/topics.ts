@@ -56,14 +56,20 @@ export default async function handler(req: any, res: any) {
 
     // DELETE: 주제 삭제
     if (req.method === 'DELETE') {
-      const { id } = req.query;
-      if (!id) return res.status(400).json({ error: 'ID is required' });
-
       let topics = await redis.get<any[]>(key) || [];
-      const newTopics = topics.filter(t => t.id !== id);
+      const requestedIds = Array.isArray(req.body?.ids)
+        ? req.body.ids.filter((id: unknown): id is string => typeof id === 'string')
+        : [];
+      const deleteAll = req.body?.all === true;
+      const queryId = typeof req.query.id === 'string' ? req.query.id : '';
+      const ids = requestedIds.length > 0 ? requestedIds : queryId ? [queryId] : [];
+
+      if (!deleteAll && ids.length === 0) return res.status(400).json({ error: 'id, ids, or all is required' });
+
+      const newTopics = deleteAll ? [] : topics.filter(t => !ids.includes(t.id));
       
       await redis.set(key, newTopics);
-      return res.status(200).json({ success: true, deletedId: id });
+      return res.status(200).json({ success: true, deletedCount: topics.length - newTopics.length });
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
