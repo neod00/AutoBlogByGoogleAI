@@ -15,6 +15,7 @@ Exit codes:
 """
 
 import argparse
+import html as html_lib
 import json
 import os
 import re
@@ -105,6 +106,47 @@ AWKWARD_REPLACEMENT_PHRASES = [
 LOW_QUALITY_SOURCE_HOST_HINTS = [
     "google.", "vertexaisearch.", "googleusercontent.", "search.app",
 ]
+
+# 독자에게 정보를 주지 않는 옛 템플릿 문구
+TEMPLATE_LEFTOVER_PATTERNS = [
+    (r"이\s*글을\s*(다|끝까지)\s*읽으", "'이 글을 다 읽으면' 도입 문구"),
+    (r"예상\s*읽기\s*시간|읽는\s*데는?\s*약\s*\d+\s*분", "예상 읽기 시간"),
+    (r"다음에\s*검색해\s*볼\s*키워드", "'다음에 검색해볼 키워드'"),
+]
+
+# 키워드가 없는 범용 소제목
+GENERIC_HEADINGS = ["정리하면", "그래서 누가 무엇을 해야 하나", "결론", "마치며", "맺음말"]
+
+# 지어낸 1인칭 경험 (운영자 현장 메모 field_notes가 없을 때 차단)
+FABRICATED_EXPERIENCE_PATTERNS = [
+    r"저희\s*회사",
+    r"제가\s*(최근|직접|여러|만나|이야기|컨설팅|현장|담당)",
+    r"제\s*경험(상|으로|에)",
+    r"(만나|이야기해|얘기해)\s*보(면|니)",
+    r"주변\s*(기업|실무자|담당자|사례)",
+    r"실무자들과\s*이야기",
+]
+
+# 가치 요소: 근거가 있을 때 넣는 모듈. 최소 개수 미달이면 실패.
+VALUE_MODULE_MIN = 3
+VALUE_MODULE_WARN = 2
+
+# 지원사업·공고형 글 판별과 접수기간 표기 확인
+PROGRAM_TITLE_PATTERN = r"지원사업|지원금|모집|공고"
+PROGRAM_BODY_KEYWORD = "지원사업"
+PROGRAM_BODY_MIN_MENTIONS = 3
+DATE_PATTERN = r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}"
+
+# 제목의 제재 표현과 본문의 면책·유예가 충돌하는지
+TITLE_SANCTION_PATTERN = r"과징금|벌금|처벌|과태료"
+BODY_RELIEF_PATTERN = r"면제|면책|유예|적용\s*제외"
+
+# 같은 수치 반복 (연도 제외)
+REPEATED_FIGURE_PATTERN = r"\d[\d,.]*\s*(?:조|억|만)?\s*(?:원|유로|달러|톤|개사|%)"
+MAX_FIGURE_REPEAT = 3
+
+# 기존 글 제목과의 유사도 (문자 bigram Jaccard)
+TITLE_SIMILARITY_WARN = 0.45
 
 
 def strip_html(html: str) -> str:
@@ -296,24 +338,151 @@ def check_paragraph_lengths(report: QualityReport, paragraphs: list):
         report.pass_check("문단 길이", "모바일 기준 통과")
 
 
-def check_required_structure(report: QualityReport, html: str):
-    """기후인사이트 고정 구조 감지"""
-    required = [
-        "영향받는 대상",
-        "중요 시점",
-        "가장 먼저 확인할 것",
-        "<h2>정리하면</h2>",
-        "<h3>이번 주에 할 일</h3>",
-        "<h3>이번 달에 할 일</h3>",
-        "<h3>올해 안에 할 일</h3>",
-        "다음에 검색해볼 키워드",
-    ]
-    missing = [item for item in required if item not in html]
-
-    if missing:
-        report.fail_check("필수 구조", "누락: " + ", ".join(missing[:6]))
+def check_answer_first(report: QualityReport, paragraphs: list):
+    """도입부가 결론(숫자·날짜)부터 말하는지"""
+    lead = " ".join(paragraphs[:2])
+    if re.search(r"\d", lead):
+        report.pass_check("결론 먼저", "도입부에 숫자/날짜 포함")
     else:
-        report.pass_check("필수 구조", "실무 요약/결론 구조 포함")
+        report.warn_check("결론 먼저", "첫 두 문단에 숫자나 날짜가 없음 — 누가/언제/얼마를 먼저 답해야 함")
+
+
+def check_as_of_date(report: QualityReport, plain_text: str):
+    """기준일 표기 (규제·일정 정보의 유효 시점)"""
+    if re.search(r"20\d{2}년\s*\d{1,2}월\s*기준", plain_text):
+        report.pass_check("기준일", "'YYYY년 M월 기준' 표기 있음")
+    else:
+        report.fail_check("기준일", "'YYYY년 M월 기준' 표기가 없음")
+
+
+def check_checklist(report: QualityReport, html: str):
+    """결론 체크리스트 (<ol> 3~5개 항목)"""
+    lists = re.findall(r"<ol\b[^>]*>(.*?)</ol>", html, re.IGNORECASE | re.DOTALL)
+    counts = [len(re.findall(r"<li\b", ol, re.IGNORECASE)) for ol in lists]
+    if any(3 <= c <= 6 for c in counts):
+        report.pass_check("체크리스트", f"<ol> 항목 {max(counts)}개")
+    else:
+        report.fail_check("체크리스트", "3~5개 항목의 <ol> 체크리스트가 없음")
+
+
+def detect_value_modules(html: str, plain_text: str) -> list:
+    """근거 기반 가치 요소 5종 중 포함된 것"""
+    found = []
+    if re.search(r"가상\s*사례", plain_text):
+        found.append("가상 사례")
+    faq_h2 = re.search(r"<h2[^>]*>[^<]*자주\s*묻는", html, re.IGNORECASE)
+    faq_questions = re.findall(r"<h3[^>]*>[^<]*\?\s*</h3>", html, re.IGNORECASE)
+    if faq_h2 and len(faq_questions) >= 2:
+        found.append("자주 묻는 질문")
+    if re.search(r"달라진\s*점|바뀐\s*점|바뀌었는지|바뀐\s*내용|초안.{0,15}최종", plain_text):
+        found.append("달라진 점")
+    for thead in re.findall(r"<table\b.*?</tr>", html, re.IGNORECASE | re.DOTALL):
+        if re.search(r"자료|항목|체크|담당|준비|제출", strip_html(thead)):
+            found.append("실무 표")
+            break
+    if re.search(r"<h2[^>]*>[^<]*(일정|앞으로)", html, re.IGNORECASE):
+        found.append("앞으로의 일정")
+    return found
+
+
+def check_value_modules(report: QualityReport, html: str, plain_text: str):
+    """가치 요소 개수"""
+    found = detect_value_modules(html, plain_text)
+    detail = f"{len(found)}개 ({', '.join(found) or '없음'})"
+    if len(found) >= VALUE_MODULE_MIN:
+        report.pass_check("가치 요소", detail)
+    elif len(found) >= VALUE_MODULE_WARN:
+        report.warn_check("가치 요소", f"{detail} — {VALUE_MODULE_MIN}개 이상 권장")
+    else:
+        report.fail_check("가치 요소", f"{detail} — 최소 {VALUE_MODULE_MIN}개 필요")
+
+
+def check_template_leftovers(report: QualityReport, plain_text: str, headings: list):
+    """옛 템플릿 문구와 범용 소제목"""
+    leftovers = [label for pattern, label in TEMPLATE_LEFTOVER_PATTERNS if re.search(pattern, plain_text)]
+    if leftovers:
+        report.fail_check("템플릿 잔재", ", ".join(leftovers))
+    else:
+        report.pass_check("템플릿 잔재", "없음")
+
+    generic = [strip_html(h) for h in headings if strip_html(h).strip() in GENERIC_HEADINGS]
+    if generic:
+        report.warn_check("소제목 키워드", f"범용 소제목: {', '.join(generic)}")
+    else:
+        report.pass_check("소제목 키워드", "범용 소제목 없음")
+
+
+def check_fabricated_experience(report: QualityReport, plain_text: str, has_field_notes: bool):
+    """근거 없는 1인칭 경험 서술"""
+    hits = []
+    for pattern in FABRICATED_EXPERIENCE_PATTERNS:
+        m = re.search(pattern, plain_text)
+        if m:
+            start = max(0, m.start() - 10)
+            hits.append(plain_text[start:m.end() + 15].strip())
+    if not hits:
+        report.pass_check("지어낸 경험", "1인칭 경험 서술 없음")
+    elif has_field_notes:
+        report.warn_check("지어낸 경험", f"운영자 메모와 일치하는지 확인: {' / '.join(hits[:2])}")
+    else:
+        report.fail_check("지어낸 경험", f"운영자 메모 없이 1인칭 경험 서술: {' / '.join(hits[:2])}")
+
+
+def check_title_body_consistency(report: QualityReport, title: str, plain_text: str):
+    """제목의 제재 표현이 본문의 면책·유예와 충돌하는지"""
+    if re.search(TITLE_SANCTION_PATTERN, title) and re.search(BODY_RELIEF_PATTERN, plain_text):
+        report.warn_check("제목-본문 일치", "제목은 제재를 강조하지만 본문에 면책·유예 조건이 있음")
+    else:
+        report.pass_check("제목-본문 일치", "충돌 없음")
+
+
+def check_program_deadlines(report: QualityReport, title: str, plain_text: str):
+    """지원사업·공고형 글에 접수기간이 있는지"""
+    is_program = re.search(PROGRAM_TITLE_PATTERN, title) or plain_text.count(PROGRAM_BODY_KEYWORD) >= PROGRAM_BODY_MIN_MENTIONS
+    if not is_program:
+        report.pass_check("접수기간", "지원사업형 글 아님 (스킵)")
+        return
+    dates = re.findall(DATE_PATTERN, plain_text)
+    if len(dates) >= 2 and re.search(r"마감|접수", plain_text):
+        report.pass_check("접수기간", f"날짜 {len(dates)}개와 접수/마감 표기 확인")
+    else:
+        report.fail_check("접수기간", "지원사업형 글인데 접수 시작일·마감일이 없음")
+
+
+def check_figure_repetition(report: QualityReport, html: str):
+    """문장 속 같은 수치의 과도한 반복 (연도·표 제외 — 표는 행마다 값이 반복될 수 있음)"""
+    prose = strip_html(re.sub(r"<table\b.*?</table>", " ", html, flags=re.IGNORECASE | re.DOTALL))
+    figures = [re.sub(r"\s+", "", f) for f in re.findall(REPEATED_FIGURE_PATTERN, prose)]
+    over = [(f, c) for f, c in Counter(figures).most_common() if c > MAX_FIGURE_REPEAT]
+    if over:
+        report.warn_check("수치 반복", ", ".join(f"'{f}' {c}회" for f, c in over[:3]))
+    else:
+        report.pass_check("수치 반복", f"같은 수치 {MAX_FIGURE_REPEAT}회 이하")
+
+
+def _title_bigrams(title: str) -> set:
+    normalized = re.sub(r"[\s\W_]+", "", html_lib.unescape(html_lib.unescape(title)).lower())
+    return {normalized[i:i + 2] for i in range(len(normalized) - 1)}
+
+
+def check_cannibalization(report: QualityReport, title: str, existing_titles: list):
+    """기존 글 제목과의 유사도"""
+    if not existing_titles:
+        report.pass_check("주제 중복", "기존 글 목록 없음 (스킵)")
+        return
+    current = _title_bigrams(title)
+    best_score, best_title = 0.0, ""
+    for existing in existing_titles:
+        other = _title_bigrams(existing)
+        if not current or not other or existing.strip() == title.strip():
+            continue
+        score = len(current & other) / len(current | other)
+        if score > best_score:
+            best_score, best_title = score, existing
+    if best_score >= TITLE_SIMILARITY_WARN:
+        report.warn_check("주제 중복", f"유사도 {best_score:.2f}: '{html_lib.unescape(html_lib.unescape(best_title))}'")
+    else:
+        report.pass_check("주제 중복", f"최대 유사도 {best_score:.2f}")
 
 
 def check_table_requirement(report: QualityReport, title: str, plain_text: str, table_count: int):
@@ -444,7 +613,7 @@ def check_completeness(report: QualityReport, html: str):
         flags=re.IGNORECASE,
     )[0]
     plain = strip_html(body_html).strip() or strip_html(html).strip()
-    ends_properly = plain and (plain[-1] in '.!?。\”’' or '다음에 검색해볼 키워드' in plain[-120:])
+    ends_properly = plain and plain[-1] in '.!?。\”’'
     
     if abs(open_tags - close_tags) > 3:
         report.warn_check("글 완전성", f"HTML 태그 불일치 (열림 {open_tags} vs 닫힘 {close_tags})")
@@ -480,6 +649,8 @@ def main():
     title = content.get("title", "")
     html = content.get("html", "")
     tags = content.get("tags", [])
+    existing_titles = content.get("existing_titles", [])
+    has_field_notes = bool(content.get("field_notes"))
 
     # 데이터 추출
     plain_text = strip_html(html)
@@ -499,7 +670,16 @@ def main():
     check_banned_expressions(report, title, plain_text)
     check_awkward_replacement_phrases(report, title, plain_text)
     check_paragraph_lengths(report, paragraphs)
-    check_required_structure(report, html)
+    check_answer_first(report, paragraphs)
+    check_as_of_date(report, plain_text)
+    check_checklist(report, html)
+    check_value_modules(report, html, plain_text)
+    check_template_leftovers(report, plain_text, headings)
+    check_fabricated_experience(report, plain_text, has_field_notes)
+    check_title_body_consistency(report, title, plain_text)
+    check_program_deadlines(report, title, plain_text)
+    check_figure_repetition(report, html)
+    check_cannibalization(report, title, existing_titles)
     check_table_requirement(report, title, plain_text, table_count)
     check_source_quality(report, html, plain_text)
     check_ai_speak(report, plain_text)

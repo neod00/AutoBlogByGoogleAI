@@ -392,7 +392,8 @@ function splitPlainParagraph(text: string, maxLength = 190): string[] {
   const sentences = text
     .replace(/\s+/g, " ")
     .trim()
-    .match(/[^.!?。]+[.!?。]?/g) || [text.trim()];
+    // 닫는 따옴표·괄호는 앞 문장에 붙여야 인용문이 두 문단으로 쪼개지지 않는다.
+    .match(/[^.!?。]+(?:[.!?。]+['"’”」』)\]]*)?/g) || [text.trim()];
 
   const chunks: string[] = [];
   let current = "";
@@ -419,27 +420,6 @@ function splitPlainParagraph(text: string, maxLength = 190): string[] {
   return chunks;
 }
 
-function ensureComparisonTable(html: string): string {
-  if (/<table\b/i.test(html)) return html;
-
-  const tableHtml = `
-<table>
-  <thead>
-    <tr><th>확인 항목</th><th>실무 질문</th><th>먼저 볼 자료</th></tr>
-  </thead>
-  <tbody>
-    <tr><td>적용 대상</td><td>우리 회사나 거래처가 직접 영향을 받는가?</td><td>정부 고시, 규제 로드맵</td></tr>
-    <tr><td>시행 시점</td><td>계약, 조달, 보고 일정 중 어느 단계가 먼저 바뀌는가?</td><td>부처 보도자료, 국제기구 문서</td></tr>
-    <tr><td>대응 비용</td><td>인증, 데이터 수집, 공급망 확인에 예산이 필요한가?</td><td>기업 공시, 산업 보고서</td></tr>
-  </tbody>
-</table>`;
-
-  if (/<h2[^>]*>/i.test(html)) {
-    return html.replace(/(<h2[^>]*>[\s\S]*?<\/h2>)/i, `$1\n${tableHtml}`);
-  }
-
-  return `${tableHtml}\n${html}`;
-}
 function normalizeParagraphLengths(html: string): string {
   return html.replace(/<p([^>]*)>([\s\S]*?)<\/p>/gi, (full, attrs, inner) => {
     const plain = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -456,87 +436,118 @@ function normalizeParagraphLengths(html: string): string {
 
 function applyQualityGateGuards(title: string, html: string): { title: string; html: string } {
   const safeTitle = sanitizeBannedExpressions(title).replace(/!{2,}/g, "!");
-  const safeHtml = ensureComparisonTable(normalizeParagraphLengths(sanitizeBannedExpressions(html)));
+  // 표가 없을 때 범용 표를 끼워 넣지 않는다. 표 누락은 품질 게이트가 판단한다.
+  const safeHtml = normalizeParagraphLengths(sanitizeBannedExpressions(html));
   return { title: safeTitle, html: safeHtml };
 }
-async function fetchRelatedPosts(category: string, currentTitle: string): Promise<{title: string, link: string}[]> {
+
+type RssPost = { title: string; link: string };
+
+// RSS 제목은 엔티티가 이중으로 인코딩되어 온다 (예: &amp;mdash;).
+function decodeEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+    mdash: "—", ndash: "–", middot: "·", hellip: "…", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+  };
+  let decoded = value;
+  for (let i = 0; i < 2; i++) {
+    decoded = decoded
+      .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+      .replace(/&([a-z]+);/gi, (m, name) => named[name.toLowerCase()] ?? m);
+  }
+  return decoded;
+}
+
+async function fetchRssPosts(): Promise<RssPost[]> {
   try {
-    console.error("[generate] Fetching RSS feed for related posts...");
+    console.error("[generate] Fetching RSS feed...");
     const res = await fetch("https://climate-insight.tistory.com/rss");
     if (!res.ok) return [];
     const xml = await res.text();
-    const parser = new XMLParser({ 
-      processEntities: false, 
+    const parser = new XMLParser({
+      processEntities: false,
       ignoreDeclaration: true,
       stopNodes: ["rss.channel.item.description", "rss.channel.item.content:encoded"]
     });
     const obj = parser.parse(xml);
     const items = obj.rss?.channel?.item || [];
-    
+
     // items can be array or object if only 1 item
     const arr = Array.isArray(items) ? items : [items];
-    if (arr.length === 0) return [];
-    
-    const tokens = new Set([
-      ...tokenizeForRelatedPosts(category),
-      ...tokenizeForRelatedPosts(currentTitle),
-    ]);
-
-    const scored = arr
-      .map((i: any, idx: number) => {
-        const itemTitle = i.title || "";
-        const lowerTitle = itemTitle.toLowerCase();
-        let score = 0;
-        for (const token of tokens) {
-          if (lowerTitle.includes(token)) score += 1;
-        }
-        if (itemTitle === currentTitle) score -= 100;
-        return {
-          title: itemTitle,
-          link: i.link || "",
-          score,
-          idx,
-        };
-      })
-      .filter((i: any) => i.title && i.link)
-      .sort((a: any, b: any) => b.score - a.score || a.idx - b.idx);
-
-    const related = scored.filter((i: any) => i.score > 0).slice(0, 3);
-    const fallback = scored.slice(0, 3);
-
-    return (related.length > 0 ? related : fallback).map((i: any) => ({
-      title: i.title,
-      link: i.link,
-    }));
+    return arr
+      .map((i: any) => ({ title: decodeEntities(String(i.title || "")), link: String(i.link || "") }))
+      .filter((p: RssPost) => p.title && p.link);
   } catch (error) {
     console.error("[generate] RSS fetch failed:", error);
     return [];
   }
 }
 
+function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: string): RssPost[] {
+  const tokens = new Set([
+    ...tokenizeForRelatedPosts(category),
+    ...tokenizeForRelatedPosts(currentTitle),
+  ]);
+
+  const scored = posts
+    .map((post, idx) => {
+      const lowerTitle = post.title.toLowerCase();
+      let score = 0;
+      for (const token of tokens) {
+        if (lowerTitle.includes(token)) score += 1;
+      }
+      if (post.title === currentTitle) score -= 100;
+      return { ...post, score, idx };
+    })
+    .sort((a, b) => b.score - a.score || a.idx - b.idx);
+
+  const related = scored.filter(p => p.score > 0).slice(0, 3);
+  const fallback = scored.slice(0, 3);
+
+  return (related.length > 0 ? related : fallback).map(({ title, link }) => ({ title, link }));
+}
+
 // ── Main generation ─────────────────────────────────────────
 async function main() {
   const topic = process.argv[2];
   const template = process.argv[3] || "review";
+  // 운영자가 직접 쓴 현장 메모. 있을 때만 1인칭 서술을 허용한다.
+  const fieldNotes = (process.argv[4] || process.env.PUBLISH_FIELD_NOTES || "").trim();
 
   if (!topic) {
-    console.error("Usage: npx tsx scripts/generate-content.ts <topic> [template]");
+    console.error("Usage: npx tsx scripts/generate-content.ts <topic> [template] [field_notes]");
     process.exit(1);
   }
 
   console.error(`[generate] Topic: "${topic}", Template: "${template}"`);
 
   const templateDirective = getTemplateDirective(template);
-  const dateRangeText = "최신";
+  const today = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric",
+  }).format(new Date());
+
+  const existingPosts = await fetchRssPosts();
+  const existingPostsBlock = existingPosts.length > 0
+    ? existingPosts.map(p => `- ${p.title} | ${p.link}`).join("\n")
+    : "(없음)";
+  const fieldNotesBlock = fieldNotes || "(없음 — 1인칭 경험 서술 금지)";
 
   const finalPrompt = `
     Role: You are the senior editor of Climate Insight, a Korean climate/ESG business blog.
     Task: Write a high-quality blog post based on the User's Request and the following Directives.
-    
+
     User Request:
     - Topic: "${topic}"
-    - Timeframe: ${dateRangeText}
-    
+    - 오늘 날짜: ${today} (이 날짜 기준으로 지난 일정, 마감된 공고, 확정된 초안을 구분할 것)
+
+    [EXISTING_POSTS]
+    ${existingPostsBlock}
+    [/EXISTING_POSTS]
+
+    [FIELD_NOTES]
+    ${fieldNotesBlock}
+    [/FIELD_NOTES]
+
     STRICT Output Rules:
     1. Output ONLY the final result in the format specified below.
     2. Do NOT include any conversational text.
@@ -599,7 +610,7 @@ async function main() {
   console.error(`[generate] Category: ${category}`);
 
   // ── Inject related internal links (CTA) ──
-  const relatedPosts = await fetchRelatedPosts(category, title);
+  const relatedPosts = pickRelatedPosts(existingPosts, category, title);
   if (relatedPosts.length > 0) {
     console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
     let ctaHtml = `
@@ -621,7 +632,15 @@ async function main() {
   const guarded = applyQualityGateGuards(title, post);
 
   // ── Output JSON ──
-  const output = { title: guarded.title, html: guarded.html, tags, category };
+  // existing_titles·field_notes는 품질 게이트의 주제 중복·지어낸 경험 검사에 쓰인다.
+  const output = {
+    title: guarded.title,
+    html: guarded.html,
+    tags,
+    category,
+    existing_titles: existingPosts.map(p => p.title),
+    field_notes: fieldNotes,
+  };
   console.log(JSON.stringify(output, null, 2));
 }
 
