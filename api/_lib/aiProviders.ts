@@ -7,6 +7,12 @@ const OPENAI_WEB_SEARCH_TOOL = process.env.OPENAI_WEB_SEARCH_TOOL || 'web_search
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 45_000);
 const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 3_000);
 
+// OpenAI 대체 경로 전용 설정. 블로그 본문처럼 긴 출력은 기본값(3,000토큰, 45초)으로는 잘리거나 시간이 초과된다.
+export type AiFallbackOptions = {
+  openaiMaxOutputTokens?: number;
+  openaiTimeoutMs?: number;
+};
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -22,6 +28,13 @@ export function shouldUseOpenAIFirst(): boolean {
 
 function getPromptText(contents: any): string {
   if (typeof contents === 'string') return contents;
+  // Gemini 형식 [{ role, parts: [{ text }] }]은 텍스트만 이어 붙인다. JSON 그대로 넘기면 줄바꿈이 "\n" 문자열로 들어간다.
+  if (Array.isArray(contents)) {
+    const texts = contents.flatMap((content: any) =>
+      (content?.parts || []).map((part: any) => part?.text).filter((text: any) => typeof text === 'string')
+    );
+    if (texts.length > 0) return texts.join('\n\n');
+  }
   return JSON.stringify(contents);
 }
 
@@ -49,7 +62,7 @@ function getOpenAIErrorMessage(status: number, data: any): string {
   return `[OpenAI ${status}] ${message}`;
 }
 
-export async function generateOpenAIContent(params: any): Promise<{ text: string }> {
+export async function generateOpenAIContent(params: any, options: AiFallbackOptions = {}): Promise<{ text: string }> {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not set');
   }
@@ -57,7 +70,7 @@ export async function generateOpenAIContent(params: any): Promise<{ text: string
   const body: any = {
     model: OPENAI_MODEL,
     input: getPromptText(params.contents),
-    max_output_tokens: OPENAI_MAX_OUTPUT_TOKENS,
+    max_output_tokens: options.openaiMaxOutputTokens ?? OPENAI_MAX_OUTPUT_TOKENS,
   };
 
   if (shouldUseWebSearch(params)) {
@@ -66,7 +79,7 @@ export async function generateOpenAIContent(params: any): Promise<{ text: string
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), options.openaiTimeoutMs ?? OPENAI_TIMEOUT_MS);
 
   try {
     const response = await fetch(OPENAI_RESPONSES_URL, {
@@ -84,6 +97,12 @@ export async function generateOpenAIContent(params: any): Promise<{ text: string
       throw new Error(getOpenAIErrorMessage(response.status, data));
     }
 
+    // 출력 한도에 걸려 중간에 끊긴 응답은 잘린 글이 발행되지 않도록 실패로 처리한다.
+    if (data?.status === 'incomplete') {
+      const reason = data?.incomplete_details?.reason || 'unknown';
+      throw new Error(`[OpenAI] Response incomplete (${reason})`);
+    }
+
     const text = extractOpenAIText(data);
     if (!text) {
       throw new Error('OpenAI response did not include output_text');
@@ -99,11 +118,12 @@ export async function generateContentWithAiFallback(
   geminiClient: any,
   params: any,
   maxGeminiRetries = 1,
-  logPrefix = '[AI]'
+  logPrefix = '[AI]',
+  options: AiFallbackOptions = {}
 ): Promise<{ text: string }> {
   if (!geminiClient || shouldUseOpenAIFirst()) {
     console.log(`${logPrefix} Using OpenAI provider.`);
-    return generateOpenAIContent(params);
+    return generateOpenAIContent(params, options);
   }
 
   let attempt = 0;
@@ -113,7 +133,7 @@ export async function generateContentWithAiFallback(
     } catch (error: any) {
       if (isGeminiUsageLimitError(error) && hasOpenAIKey()) {
         console.warn(`${logPrefix} Gemini usage limit reached. Falling back to OpenAI.`);
-        return generateOpenAIContent(params);
+        return generateOpenAIContent(params, options);
       }
 
       attempt++;

@@ -24,6 +24,21 @@ if (!API_KEY && !hasOpenAIKey()) {
 
 const genAI = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
+const MAIN_MODEL = "gemini-2.5-flash";
+// 이미지 위치 분석·카테고리 분류처럼 단순한 보조 작업은 저가 모델로, 추론 없이 처리한다.
+const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-2.5-flash-lite";
+const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
+
+async function generateLightContent(contents: any, logPrefix: string): Promise<{ text: string }> {
+  try {
+    return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+  } catch (error) {
+    // 2.5 계열은 과거 사용 이력이 있는 계정에만 열려 있어 Flash-Lite가 거부될 수 있다. 그때는 기본 모델로 되돌린다.
+    console.error(`${logPrefix} ${LIGHT_MODEL} failed, retrying with ${MAIN_MODEL}:`, error);
+    return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+  }
+}
+
 // ── Load directives ─────────────────────────────────────────
 import { fileURLToPath } from "url";
 import { dirname } from "path";
@@ -89,10 +104,10 @@ async function fetchAndInjectImages(post: string): Promise<string> {
     console.error("[images] Analyzing post for image placements...");
     const analysisPrompt = `${imagePlacementInstructions}\n\n---\n\n다음 블로그 글을 분석하고 이미지 배치 정보를 생성하세요:\n\n${post}`;
 
-    const analysisResult = await generateContentWithAiFallback(genAI, {
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: analysisPrompt }] }],
-    }, 1, "[images]");
+    const analysisResult = await generateLightContent(
+      [{ role: "user", parts: [{ text: analysisPrompt }] }],
+      "[images]"
+    );
 
     const analysisText = (analysisResult as any).text || "";
 
@@ -217,10 +232,7 @@ ${catList}
 답 (숫자만):`;
 
   try {
-    const result = await generateContentWithAiFallback(genAI, {
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    }, 1, "[classify]");
+    const result = await generateLightContent(prompt, "[classify]");
     const num = parseInt((result.text || "8").trim());
     return CATEGORIES[num] || "기타";
   } catch {
@@ -483,6 +495,31 @@ async function fetchRssPosts(): Promise<RssPost[]> {
   }
 }
 
+function decodeUrl(url: string): string {
+  try {
+    return decodeURI(url);
+  } catch {
+    return url;
+  }
+}
+
+// 프롬프트에는 토큰을 아끼려고 한글로 풀어 쓴 주소를 준다(인코딩 주소는 약 3배 길다).
+// 본문의 블로그 내부 링크는 RSS의 실제 주소로 되돌리고, 목록에 없는 주소(모델이 지어낸 링크)는 링크를 풀어 텍스트만 남긴다.
+function restoreInternalLinks(html: string, posts: RssPost[]): string {
+  const known = new Map(posts.map(p => [decodeUrl(p.link), p.link]));
+  return html.replace(
+    /<a\b[^>]*href="(https?:\/\/climate-insight\.tistory\.com\/[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi,
+    (full, href, text) => {
+      const canonical = known.get(decodeUrl(href));
+      if (!canonical) {
+        console.error(`[generate] Unknown internal link removed: ${decodeUrl(href)}`);
+        return text;
+      }
+      return full.replace(href, () => canonical);
+    }
+  );
+}
+
 function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: string): RssPost[] {
   const tokens = new Set([
     ...tokenizeForRelatedPosts(category),
@@ -528,7 +565,7 @@ async function main() {
 
   const existingPosts = await fetchRssPosts();
   const existingPostsBlock = existingPosts.length > 0
-    ? existingPosts.map(p => `- ${p.title} | ${p.link}`).join("\n")
+    ? existingPosts.map(p => `- ${p.title} | ${decodeUrl(p.link)}`).join("\n")
     : "(없음)";
   const fieldNotesBlock = fieldNotes || "(없음 — 1인칭 경험 서술 금지)";
 
@@ -566,13 +603,17 @@ async function main() {
   console.error("[generate] Calling AI provider...");
 
   const result = await generateContentWithAiFallback(genAI, {
-    model: "gemini-2.5-flash",
+    model: MAIN_MODEL,
     contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
     config: {
       tools: [{ googleSearch: {} }],
       responseModalities: ["TEXT"],
     },
-  }, 2, "[generate]");
+  }, 2, "[generate]", {
+    // OpenAI 대체 시 본문 전체(약 4~5천 토큰)와 검색 시간이 들어가도록 여유를 준다.
+    openaiMaxOutputTokens: 16_000,
+    openaiTimeoutMs: 180_000,
+  });
 
   const rawText = result.text || "";
 
@@ -588,6 +629,7 @@ async function main() {
 
   // Strip accidental reference sections from POST
   post = post.replace(/<h[23][^>]*>\s*(참고|참고:|참고 자료|출처)[^<]*<\/h[23]>[\s\S]*?(?=<h[23]|$)/gi, "");
+  post = restoreInternalLinks(post, existingPosts);
 
   // Build a compact, visible reference section from model sources and grounding metadata.
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
