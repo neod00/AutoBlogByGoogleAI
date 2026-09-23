@@ -1,8 +1,10 @@
 name: DailyEngTips AutoPilot Trigger
 
 on:
-  schedule:
-    - cron: '0 */2 * * *'  # Every 2 hours
+  # 2026-09: 아래 curl 주소가 없어져(DEPLOYMENT_NOT_FOUND) 발행이 한 번도 되지 않아 예약 실행을 중지했다.
+  # 실제 관리 앱은 auto-blog-by-google-ai-3.vercel.app에 있다. 발행을 재개하려면 주소를 바꾸고 schedule을 되살린다.
+  # schedule:
+  #   - cron: '0 */2 * * *'  # Every 2 hours
   workflow_dispatch:      # Allow manual trigger
 
 jobs:

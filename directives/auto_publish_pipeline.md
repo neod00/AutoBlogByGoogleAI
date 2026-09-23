@@ -115,6 +115,23 @@ auto-publish.yml
 - 프롬프트의 기존 글 주소는 한글로 풀어서 넣는다. 퍼센트 인코딩 그대로면 50개에 약 11,500토큰, 풀면 약 4,300토큰이다. 본문의 블로그 내부 링크는 RSS의 실제 주소로 되돌리고, 목록에 없는 주소는 링크를 풀어 텍스트만 남긴다.
 - Gemini 한도에 걸려 OpenAI로 대체될 때, 본문 생성은 출력 16,000토큰과 180초까지 허용한다(기본값 3,000토큰, 45초로는 글이 잘린다). 응답이 출력 한도에서 끊기면(`status: incomplete`) 실패로 처리해 잘린 글이 발행되지 않게 한다.
 
+### Gemini 지출 구조 (2026-09 점검)
+
+- 네 블로그가 같은 Gemini 프로젝트(AI-Blog)와 키를 쓴다. AI Studio 지출은 네 블로그 합계다.
+- 이 저장소에 연결된 Vercel 프로젝트와 매일 23:00 UTC 키워드 발굴(`daily-digest`) Cron:
+
+| Vercel 프로젝트 | 블로그 |
+| --- | --- |
+| `auto-blog-by-google-ai` | Climate Insight |
+| `auto-blog-by-google-ai-2` | Aidajigi (오토파일럿이 호출하는 주소) |
+| `auto-blog-by-google-ai-1ajd` | Aidajigi 중복 배포 (키워드 발굴도 중복 실행) |
+| `auto-blog-by-google-ai-3` | DailyEnglishTips |
+| `auto-blog-by-google-ai-4` | PlantGuide |
+
+- 2026-09 점검 때 28일 지출은 약 12,000원이었다. 발행은 약 20%였고, 나머지는 매일 도는 키워드 발굴(5곳, 하루 Gemini 약 40회)이었다. DailyEnglishTips·PlantGuide는 오토파일럿이 없어진 옛 주소(`dailyengtips-admin`, `plantguide-admin`)를 불러 발행이 0건이었는데도 키워드 발굴은 매일 돌았다.
+- 모든 키워드 발굴에는 비용 방어를 둔다: 시드 최대 2개(`KEYWORD_MAX_SEEDS_PER_RUN`), 대기 글감 4개 이상이면 건너뛰기(`KEYWORD_MIN_PENDING_TOPICS`), 추론 끄기(`thinkingBudget: 0`).
+- 발행 1회 비용은 약 60~75원이다. 지출 그래프에서 하루 발행이 많았던 날의 증가분으로 확인했다.
+
 ## 쿠키 Base64 인코딩
 
 ```powershell

@@ -63,7 +63,7 @@ async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredK
   const factResponse = await generateContentWithRetry(ai, {
     model: 'gemini-2.5-flash',
     contents: factPrompt,
-    config: { tools: [{ googleSearch: {} }] },
+    config: { tools: [{ googleSearch: {} }], thinkingConfig: { thinkingBudget: 0 } },
   });
   
   const factText = factResponse.text || "理쒖떊 ?뺣낫 ?놁쓬";
@@ -109,6 +109,7 @@ IMPORTANT:
   const response = await generateContentWithRetry(ai, {
     model: 'gemini-2.5-flash',
     contents: generatePrompt,
+    config: { thinkingConfig: { thinkingBudget: 0 } },
   });
 
   const text = response.text || "";

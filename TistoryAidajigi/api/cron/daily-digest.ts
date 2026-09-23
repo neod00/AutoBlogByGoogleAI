@@ -71,8 +71,12 @@ const AIDAJIGI_DEFAULT_SEEDS = [
   'AI 생산성 도구',
 ];
 
-// 무료 API Rate Limit 방어: 시드별 순차 호출 + 딜레이
-const MAX_SEEDS_PER_RUN = 5;
+// 비용 방어: 시드 1개당 Gemini 2회(검색·정리). 발행은 이틀에 1편이라 하루 2개 시드로 충분하다.
+const MAX_SEEDS_PER_RUN = Number(process.env.KEYWORD_MAX_SEEDS_PER_RUN || 2);
+// 대기 글감이 이만큼 쌓여 있으면 그날은 Gemini 발굴을 건너뛴다.
+const MIN_PENDING_TOPICS_BEFORE_DISCOVERY = Number(process.env.KEYWORD_MIN_PENDING_TOPICS || 4);
+// 키워드 발굴은 검색 결과 정리 작업이라 추론 토큰(출력 요금)이 필요 없다.
+const NO_THINKING = { thinkingBudget: 0 };
 const AUTO_REFRESH_SEEDS = process.env.KEYWORD_AUTO_REFRESH_SEEDS !== 'false';
 const SEED_REFRESH_INTERVAL_DAYS = Number(process.env.KEYWORD_SEED_REFRESH_INTERVAL_DAYS || 7);
 const AUTO_REFRESH_SEED_COUNT = Number(process.env.KEYWORD_AUTO_REFRESH_SEED_COUNT || 8);
@@ -218,7 +222,7 @@ IMPORTANT:
         const response = await generateContentWithRetry(ai, {
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }] },
+            config: { tools: [{ googleSearch: {} }], thinkingConfig: NO_THINKING },
         }, 1);
 
         const parsed = parseJsonArray(response.text || '');
@@ -279,7 +283,7 @@ async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredK
     const factResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: factPrompt,
-        config: { tools: [{ googleSearch: {} }] },
+        config: { tools: [{ googleSearch: {} }], thinkingConfig: NO_THINKING },
     });
     
     const factText = factResponse.text || "최신 정보 없음";
@@ -343,6 +347,7 @@ IMPORTANT:
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: generatePrompt,
+        config: { thinkingConfig: NO_THINKING },
     });
 
     const text = response.text || "";
@@ -448,6 +453,20 @@ export default async function handler(req: any, res: any) {
         const seedRefresh = await refreshSeedTopicIfDue(dailyTopic, settings);
         dailyTopic = seedRefresh.dailyTopic;
         console.log(`[daily-digest] Seed refresh: ${seedRefresh.refreshed ? 'refreshed' : 'skipped'} (${seedRefresh.reason})`);
+
+        const existingTopics = await redis.get<any[]>('admin:topics_queue') || [];
+        const pendingTopics = existingTopics.filter(topic => topic.status === 'pending');
+
+        if (pendingTopics.length >= MIN_PENDING_TOPICS_BEFORE_DISCOVERY) {
+            console.log(`[daily-digest] Pending queue has ${pendingTopics.length} topics. Skipping Gemini discovery to control cost.`);
+            return res.status(200).json({
+                message: 'Skipped keyword discovery because pending queue is sufficiently stocked.',
+                pendingCount: pendingTopics.length,
+                minPendingBeforeDiscovery: MIN_PENDING_TOPICS_BEFORE_DISCOVERY,
+                seedRefresh,
+                estimatedGeminiCalls: seedRefresh.estimatedGeminiCalls,
+            });
+        }
 
         const seeds = parseSeedList(dailyTopic);
         const selectedSeedCount = Math.min(seeds.length, MAX_SEEDS_PER_RUN);

@@ -47,8 +47,12 @@ interface DiscoveredKeyword {
   discoveredAt: string;
 }
 
-// 무료 API Rate Limit 방어: 시드별 순차 호출 + 딜레이
-const MAX_SEEDS_PER_RUN = 5;
+// 비용 방어: 시드 1개당 Gemini 2회(검색·정리). 하루 2개 시드로 제한한다.
+const MAX_SEEDS_PER_RUN = Number(process.env.KEYWORD_MAX_SEEDS_PER_RUN || 2);
+// 대기 글감이 이만큼 쌓여 있으면 그날은 Gemini 발굴을 건너뛴다. (발행이 멈춰도 발굴 비용이 계속 나가지 않게)
+const MIN_PENDING_TOPICS_BEFORE_DISCOVERY = Number(process.env.KEYWORD_MIN_PENDING_TOPICS || 4);
+// 키워드 발굴은 검색 결과 정리 작업이라 추론 토큰(출력 요금)이 필요 없다.
+const NO_THINKING = { thinkingBudget: 0 };
 const DELAY_BETWEEN_CALLS_MS = 3000;
 
 function delay(ms: number): Promise<void> {
@@ -73,7 +77,7 @@ async function discoverForSingleSeed(ai: any, seed: string): Promise<DiscoveredK
     const factResponse = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: factPrompt,
-        config: { tools: [{ googleSearch: {} }] },
+        config: { tools: [{ googleSearch: {} }], thinkingConfig: NO_THINKING },
     });
     
     const factText = factResponse.text || "최신 정보 없음";
@@ -137,6 +141,7 @@ IMPORTANT:
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: generatePrompt,
+        config: { thinkingConfig: NO_THINKING },
     });
 
     const text = response.text || "";
@@ -235,6 +240,18 @@ export default async function handler(req: any, res: any) {
             }
         } catch (e) {
             console.error('Redis Load Settings Error:', e);
+        }
+
+        const existingTopics = await redis.get<any[]>('admin:topics_queue') || [];
+        const pendingTopics = existingTopics.filter(topic => topic.status === 'pending');
+
+        if (pendingTopics.length >= MIN_PENDING_TOPICS_BEFORE_DISCOVERY) {
+            console.log(`[daily-digest] Pending queue has ${pendingTopics.length} topics. Skipping Gemini discovery to control cost.`);
+            return res.status(200).json({
+                message: 'Skipped keyword discovery because pending queue is sufficiently stocked.',
+                pendingCount: pendingTopics.length,
+                minPendingBeforeDiscovery: MIN_PENDING_TOPICS_BEFORE_DISCOVERY,
+            });
         }
 
         const seeds = dailyTopic.split(',').map((s: string) => s.trim()).filter((s: string) => s);

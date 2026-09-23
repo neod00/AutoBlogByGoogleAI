@@ -94,7 +94,7 @@ IMPORTANT:
     const response = await generateContentWithAiFallback(ai, {
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { tools: [{ googleSearch: {} }], thinkingConfig: { thinkingBudget: 0 } },
     }, 1, '[recommend-seeds]');
 
     const recommendations = parseRecommendations(response.text || "");

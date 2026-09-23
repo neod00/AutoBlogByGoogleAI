@@ -66,7 +66,7 @@ Google Search 결과를 사용해 최근 6~12개월 사이 실제로 확인되�
   const factResponse = await generateContentWithAiFallback(ai, {
     model: 'gemini-2.5-flash',
     contents: factPrompt,
-    config: { tools: [{ googleSearch: {} }] },
+    config: { tools: [{ googleSearch: {} }], thinkingConfig: { thinkingBudget: 0 } },
   }, 1, '[keyword-discovery]');
 
   const factText = factResponse.text || "최신 정보 없음";
@@ -108,6 +108,7 @@ IMPORTANT:
   const response = await generateContentWithAiFallback(ai, {
     model: 'gemini-2.5-flash',
     contents: generatePrompt,
+    config: { thinkingConfig: { thinkingBudget: 0 } },
   }, 1, '[keyword-discovery]');
 
   try {
