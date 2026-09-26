@@ -4,7 +4,17 @@ const CRON_SECRET = process.env.CRON_SECRET;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
-const APP_URL = process.env.APP_URL || '';
+// Vercel 환경변수 APP_URL이 스킴 없이(예: "auto-blog-by-google-ai.vercel.app") 설정돼 있으면,
+// 워크플로가 이 값을 그대로 http:// 요청에 쓰다가 308(https 강제 리다이렉트)을 만난다.
+// 워크플로의 curl은 리다이렉트를 따라가지 않아 "Redirecting..." 응답만 받고 상태 갱신이 조용히 무시됐다
+// (2026-09-24/25 발행 2건이 이 때문에 큐에 "publishing"으로 멈춰 있었다).
+function normalizeAppUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed.replace(/^http:\/\//i, 'https://') : `https://${trimmed}`;
+}
+
+const APP_URL = normalizeAppUrl(process.env.APP_URL || '');
 
 function isAuthorized(req: any): boolean {
     const authHeader = String(req.headers.authorization || '');

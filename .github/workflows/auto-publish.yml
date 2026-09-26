@@ -139,11 +139,24 @@ jobs:
             ERROR_MSG="publish_result.json not found"
           fi
 
+          # app_url이 스킴 없이(또는 http://로) 전달돼도 항상 https로 강제한다.
+          # 308 리다이렉트를 만나면 curl이 Authorization 헤더를 포트 변경으로 보고 탈락시킬 수 있어
+          # -L만으로는 불충분하다 — 애초에 https 요청을 만드는 편이 안전하다.
+          APP_URL="https://$(echo "$APP_URL" | sed -E 's#^https?://##; s#/+$##')"
           echo "Reporting cookie status: $STATUS"
-          curl -s -X POST "$APP_URL/api/admin/cookie-status" \
+          # -L/--retry: 그래도 리다이렉트나 일시적 네트워크/5xx 오류가 발생하면 대비한다.
+          HTTP_CODE=$(curl -sS -L -o /tmp/cookie_status_resp.json -w "%{http_code}" \
+            --retry 3 --retry-delay 3 --retry-all-errors \
+            -X POST "$APP_URL/api/admin/cookie-status" \
             -H "Authorization: Bearer $ADMIN_PASSWORD" \
             -H "Content-Type: application/json" \
-            -d "{\"status\": \"$STATUS\", \"error\": \"$ERROR_MSG\"}" || echo "Warning: Failed to report cookie status"
+            -d "{\"status\": \"$STATUS\", \"error\": \"$ERROR_MSG\"}") || HTTP_CODE="000"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Cookie status reported (HTTP $HTTP_CODE)"
+          else
+            echo "⚠️ Warning: Failed to report cookie status (HTTP $HTTP_CODE)"
+            cat /tmp/cookie_status_resp.json 2>/dev/null || true
+          fi
 
       - name: Send notification email
         if: always()
@@ -168,9 +181,21 @@ jobs:
               STATUS="failed"
             fi
 
+            # cookie-status 단계와 같은 이유로 https를 강제한다: 이 호출이 http로 나가 308
+            # 리다이렉트를 만나면 "Redirecting..."만 받고 상태 갱신을 놓쳐, 큐에 published/failed
+            # 항목이 "publishing"으로 영구히 남아 대기열을 막는다 (2026-09-24/25 실사례).
+            APP_URL="https://$(echo "$APP_URL" | sed -E 's#^https?://##; s#/+$##')"
             echo "Updating Vercel topic ($PUBLISH_ID) status to: $STATUS"
-            curl -s -X PUT "$APP_URL/api/admin/topics" \
+            HTTP_CODE=$(curl -sS -L -o /tmp/topic_status_resp.json -w "%{http_code}" \
+              --retry 3 --retry-delay 3 --retry-all-errors \
+              -X PUT "$APP_URL/api/admin/topics" \
               -H "Authorization: Bearer $ADMIN_PASSWORD" \
               -H "Content-Type: application/json" \
-              -d "{\"id\": \"$PUBLISH_ID\", \"status\": \"$STATUS\"}"
+              -d "{\"id\": \"$PUBLISH_ID\", \"status\": \"$STATUS\"}") || HTTP_CODE="000"
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Topic status updated (HTTP $HTTP_CODE)"
+            else
+              echo "⚠️ Warning: Failed to update topic status (HTTP $HTTP_CODE) — queue may be left stuck as 'publishing'"
+              cat /tmp/topic_status_resp.json 2>/dev/null || true
+            fi
           fi
