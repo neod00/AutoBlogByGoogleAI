@@ -131,8 +131,10 @@ FABRICATED_EXPERIENCE_PATTERNS = [
 VALUE_MODULE_MIN = 3
 VALUE_MODULE_WARN = 2
 
-# 지원사업·공고형 글 판별과 접수기간 표기 확인
-PROGRAM_TITLE_PATTERN = r"지원사업|지원금|모집|공고"
+# 지원사업·공고형, 생활 정보형(보조금·바우처·환급) 글 판별과 접수기간 표기 확인
+PROGRAM_TITLE_PATTERN = r"지원사업|지원금|보조금|바우처|환급|모집|공고"
+# 상시 신청 제도는 접수기간 날짜가 없어도 된다.
+ALWAYS_OPEN_PATTERN = r"상시\s*(신청|접수|운영|가입)"
 PROGRAM_BODY_KEYWORD = "지원사업"
 PROGRAM_BODY_MIN_MENTIONS = 3
 DATE_PATTERN = r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}"
@@ -377,7 +379,8 @@ def detect_value_modules(html: str, plain_text: str) -> list:
     if re.search(r"달라진\s*점|바뀐\s*점|바뀌었는지|바뀐\s*내용|초안.{0,15}최종", plain_text):
         found.append("달라진 점")
     for thead in re.findall(r"<table\b.*?</tr>", html, re.IGNORECASE | re.DOTALL):
-        if re.search(r"자료|항목|체크|담당|준비|제출", strip_html(thead)):
+        # 실무 글의 준비 자료표, 생활 정보 글의 대상·금액·신청처 표
+        if re.search(r"자료|항목|체크|담당|준비|제출|대상|금액|신청|요금|비용|조건", strip_html(thead)):
             found.append("실무 표")
             break
     if re.search(r"<h2[^>]*>[^<]*(일정|앞으로)", html, re.IGNORECASE):
@@ -442,11 +445,14 @@ def check_program_deadlines(report: QualityReport, title: str, plain_text: str):
     if not is_program:
         report.pass_check("접수기간", "지원사업형 글 아님 (스킵)")
         return
+    if re.search(ALWAYS_OPEN_PATTERN, plain_text):
+        report.pass_check("접수기간", "상시 신청 제도로 표기됨")
+        return
     dates = re.findall(DATE_PATTERN, plain_text)
     if len(dates) >= 2 and re.search(r"마감|접수", plain_text):
         report.pass_check("접수기간", f"날짜 {len(dates)}개와 접수/마감 표기 확인")
     else:
-        report.fail_check("접수기간", "지원사업형 글인데 접수 시작일·마감일이 없음")
+        report.fail_check("접수기간", "지원사업·보조금형 글인데 접수 시작일·마감일(또는 상시 신청 표기)이 없음")
 
 
 def check_figure_repetition(report: QualityReport, html: str):

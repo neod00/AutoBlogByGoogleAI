@@ -7,6 +7,10 @@ import { getGeminiErrorStatusCode, getPublicGeminiErrorMessage } from '../_lib/g
 const API_KEY = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
 
 const CLIMATE_INSIGHT_CATEGORIES = [
+  '생활 에너지 요금과 절약',
+  '에너지 보조금·바우처·포인트',
+  '분리배출과 자원순환',
+  '친환경 교통과 전기차',
   '기후정책과 제도',
   '탄소중립과 배출권',
   'ESG 공시와 공급망 실사',
@@ -52,8 +56,9 @@ export default async function handler(req: any, res: any) {
 당신은 기후인사이트 블로그의 SEO 편집장입니다.
 
 블로그 정체성:
-- 한국 독자에게 기후정책, ESG 공시, 탄소중립, 에너지 비용, 수출 탄소규제, 기업 실무 대응을 쉽게 설명합니다.
-- 단순 화제성, 연예/생활 잡담, 정치 공방, 공포 마케팅, 블로그 주제와 무관한 트래픽성 키워드는 제외합니다.
+- 한국 독자에게 기후·에너지 생활 정보(요금, 보조금, 바우처, 포인트, 분리배출, 전기차)와 기후정책, ESG 공시, 탄소중립, 기업 실무 대응을 쉽게 설명합니다.
+- 생활형과 실무형 주제를 약 2:1로 다룹니다.
+- 단순 화제성, 연예, 기후·에너지와 무관한 생활 잡담, 정치 공방, 공포 마케팅, 트래픽성 키워드는 제외합니다.
 
 핵심 카테고리:
 ${CLIMATE_INSIGHT_CATEGORIES.map((category, index) => `${index + 1}. ${category}`).join('\n')}
@@ -71,8 +76,9 @@ Google Search 결과를 바탕으로 지금 기후인사이트에 추가하면 �
 1. 최근 6~12개월 안에 검색 수요나 정책/산업 변화가 확인되는 주제
 2. 향후 여러 개의 롱테일 글감으로 확장 가능한 2~5단어 시드
 3. 기존 시드와 완전히 중복되지 않는 주제
-4. 기업 실무자, 수출기업, 중소기업, ESG 담당자, 에너지 비용에 관심 있는 독자가 검색할 만한 표현
+4. 일반 가정(요금·보조금·분리배출 정보를 찾는 사람)이나 기업 실무자, 수출기업, ESG 담당자가 검색할 만한 표현
 5. 기후인사이트의 신뢰도를 해칠 수 있는 자극적 표현은 제외
+6. 앞으로 1~2개월 안에 검색이 몰릴 계절성 주제를 우선 (예: 가을·겨울은 난방비·에너지바우처)
 
 STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 [
@@ -87,7 +93,7 @@ STRICT OUTPUT FORMAT (JSON array, no markdown fences):
 IMPORTANT:
 - Output ONLY a valid JSON array. No markdown, no explanation, no code fences.
 - 모든 내용은 한국어로 작성합니다.
-- "기타", "일상", "잡담", "화제성 뉴스" 성격의 추천은 만들지 않습니다.
+- "기타", 기후·에너지와 무관한 일상 잡담, "화제성 뉴스" 성격의 추천은 만들지 않습니다.
 - 검색 결과에서 근거가 약한 키워드는 추천하지 않습니다.`;
 
     console.log('[recommend-seeds] Calling AI provider with web search...');
