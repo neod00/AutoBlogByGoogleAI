@@ -207,37 +207,88 @@ function getTemplateDirective(template: string): string {
 }
 
 // ── Category classification ─────────────────────────────────
-const CATEGORIES = [
-  "카테고리 없음",
-  "ai 신기술 및 이슈",
-  "기후변화 이슈",
-  "정책과 제도",
-  "기후금융",
-  "국제협력",
-  "과학과 기술",
-  "탄소중립",
-  "기타",
+// 이름은 티스토리 카테고리와 정확히 같아야 한다 (auto-publish.yml의 --categories).
+// "카테고리 없음"·"기타"·"ai 신기술 및 이슈"는 기후 글에 맞지 않아 선택지에서 뺐다.
+// 예전에는 번호로 답하게 하고 parseInt로 읽어서, 모델이 "기후금융"이나 "**4**"처럼 답하면 "기타"로 떨어졌다
+// (2026-09 기준 136편 중 61편이 "기타"). 이제 이름으로 받고, 못 읽으면 키워드 규칙으로 정한다.
+// keywords 순서가 우선순위다. 보조금·바우처 같은 제도 글이 전기차·에너지 키워드보다 먼저 잡히게 둔다.
+const CATEGORY_GUIDE: Array<{ name: string; hint: string; keywords: RegExp }> = [
+  {
+    name: "정책과 제도",
+    hint: "법·규제·공시 의무·CBAM·정부 지원사업·보조금·바우처·환급·요금 제도",
+    keywords: /공시|규제|법안|법률|개정안|시행령|제도|의무화|CBAM|탄소국경|실사|지원사업|지원금|보조금|바우처|환급|누진제|로드맵/,
+  },
+  {
+    name: "기후금융",
+    hint: "녹색금융·택소노미·ESG 투자·녹색채권·기후 관련 금융상품과 카드",
+    keywords: /금융|택소노미|채권|투자|펀드|대출|보험|그린카드|에코머니/,
+  },
+  {
+    name: "국제협력",
+    hint: "COP·국제 협상·국가 간 협정과 공동 대응",
+    keywords: /COP\d*|파리협정|UNFCCC|국제협력|협상|양자협정|유엔/,
+  },
+  {
+    name: "기후변화 이슈",
+    hint: "폭염·가뭄·홍수 같은 기후 현상과 피해·적응",
+    keywords: /폭염|폭우|가뭄|홍수|산불|이상기후|기온|해수면|기후 ?적응|미세먼지/,
+  },
+  {
+    name: "과학과 기술",
+    hint: "기후테크·배터리·수소·탄소포집·에너지 저장·전기차 기술",
+    keywords: /기술|배터리|수소|CCUS|탄소포집|에너지 ?저장|ESS|전기차|충전/,
+  },
+  {
+    name: "탄소중립",
+    hint: "감축·배출권·재생에너지·RE100·PPA·에너지 절약·분리배출·자원순환·탄소발자국·탄소중립포인트",
+    keywords: /탄소중립|배출권|감축|재생에너지|RE100|PPA|태양광|풍력|절약|난방|전기세|전기요금|에너지|분리배출|자원순환|재활용|폐가전|탄소발자국|포인트|Scope ?3|스코프 ?3/,
+  },
 ];
+const DEFAULT_CATEGORY = "탄소중립";
 
-async function classifyCategory(title: string, content: string): Promise<string> {
-  const catList = CATEGORIES.map((c, i) => `${i}. ${c}`).join("\n");
-  const prompt = `다음 블로그 글의 제목과 본문 앞부분을 보고, 가장 적합한 카테고리 번호를 하나만 숫자로 답하세요.
+function stripHtmlText(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+// 모델 답에 들어 있는 카테고리 이름을 찾는다. 긴 이름부터 비교해 부분 일치 오인을 막는다.
+function pickCategoryFromResponse(text: string): string | null {
+  const names = CATEGORY_GUIDE.map(c => c.name).sort((a, b) => b.length - a.length);
+  const cleaned = (text || "").replace(/[*_`"'「」]/g, "");
+  return names.find(name => cleaned.includes(name)) || null;
+}
+
+function categoryByKeywords(title: string, tags: string[], body: string): string {
+  // 제목과 태그를 먼저 보고, 없으면 본문 앞부분까지 본다.
+  for (const text of [`${title} ${tags.join(" ")}`, body]) {
+    const hit = CATEGORY_GUIDE.find(c => c.keywords.test(text));
+    if (hit) return hit.name;
+  }
+  return DEFAULT_CATEGORY;
+}
+
+async function classifyCategory(title: string, html: string, tags: string[] = []): Promise<string> {
+  const body = stripHtmlText(html).slice(0, 800);
+  const guide = CATEGORY_GUIDE.map(c => `- ${c.name}: ${c.hint}`).join("\n");
+  const prompt = `다음 블로그 글에 가장 맞는 카테고리 하나를 고르세요.
 
 카테고리:
-${catList}
+${guide}
 
 제목: ${title}
-본문 (앞 500자): ${content.substring(0, 500)}
+태그: ${tags.join(", ")}
+본문 앞부분: ${body}
 
-답 (숫자만):`;
+위 카테고리 이름 중 하나만 그대로 출력하세요. 설명이나 번호는 쓰지 마세요.`;
 
   try {
     const result = await generateLightContent(prompt, "[classify]");
-    const num = parseInt((result.text || "8").trim());
-    return CATEGORIES[num] || "기타";
-  } catch {
-    return "기타";
+    const picked = pickCategoryFromResponse(result.text || "");
+    if (picked) return picked;
+    console.error(`[classify] Unrecognized answer "${(result.text || "").slice(0, 40)}", using keyword rules`);
+  } catch (error) {
+    console.error("[classify] Classification failed, using keyword rules:", error);
   }
+  return categoryByKeywords(title, tags, body);
 }
 
 // ── RSS related posts ──────────────────────────────────────────────
@@ -648,7 +699,7 @@ async function main() {
 
   // ── Classify category ──
   console.error("[generate] Classifying category...");
-  const category = await classifyCategory(title, post);
+  const category = await classifyCategory(title, post, tags);
   console.error(`[generate] Category: ${category}`);
 
   // ── Inject related internal links (CTA) ──
