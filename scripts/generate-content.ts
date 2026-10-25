@@ -33,7 +33,8 @@ const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
 // 보조 모델 호출 설정 후보. gemini-3.5-flash-lite는 thinkingBudget: 0을 주면 400(INVALID_ARGUMENT)을 낸다 (2026-10 시험).
 // 3.x 계열은 추론 설정 방식이 달라서이므로, 거부되면 추론 설정 없이 한 번 더 시도한다.
 // 후보를 모두 거부당하면 이후 호출은 처음부터 기본 모델을 쓴다. 매 호출마다 실패를 한 번씩 거치는 지연과 로그 소음을 막는다.
-const LIGHT_CONFIG_CANDIDATES: any[] = [NO_THINKING, {}];
+// 3.x 계열은 매 실행 첫 호출이 400으로 한 번 실패했으므로 설정 없는 호출부터 시도한다. 2.x 계열은 추론 끄기부터 시도한다.
+const LIGHT_CONFIG_CANDIDATES: any[] = /^gemini-[3-9]/.test(LIGHT_MODEL) ? [{}, NO_THINKING] : [NO_THINKING, {}];
 let lightConfigIndex = 0;
 
 async function generateLightContent(contents: any, logPrefix: string): Promise<{ text: string }> {
@@ -43,7 +44,7 @@ async function generateLightContent(contents: any, logPrefix: string): Promise<{
       return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config }, 1, logPrefix);
     } catch (error) {
       lightConfigIndex++;
-      const next = lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length ? "retrying without thinking config" : `using ${MAIN_MODEL} for the rest of this run`;
+      const next = lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length ? "retrying with another config" : `using ${MAIN_MODEL} for the rest of this run`;
       console.error(`${logPrefix} ${LIGHT_MODEL} failed (${next}):`, (error as any)?.message || error);
     }
   }

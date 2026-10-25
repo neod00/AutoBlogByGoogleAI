@@ -76,10 +76,22 @@ jobs:
       - name: Quality gate
         env:
           PUBLISH_TOPIC: ${{ github.event.client_payload.topic || inputs.topic }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
         run: |
-          if ! python scripts/quality_gate.py \
-            --content-file /tmp/blog_output.json \
-            --topic "$PUBLISH_TOPIC"; then
+          run_gate() {
+            python scripts/quality_gate.py \
+              --content-file /tmp/blog_output.json \
+              --topic "$PUBLISH_TOPIC"
+          }
+          # 게이트에 걸리면 실패 항목만 고치는 수리를 한 번 하고 다시 검사한다. 그래도 실패하면 발행하지 않는다.
+          if ! run_gate; then
+            echo "🔧 Quality gate failed. Trying one repair pass..."
+            if npx tsx scripts/repair-content.ts /tmp/blog_output.json /tmp/quality_gate_result.json && run_gate; then
+              echo "✅ Quality gate passed after repair"
+              exit 0
+            fi
             python3 - <<'PY'
           import json
 
