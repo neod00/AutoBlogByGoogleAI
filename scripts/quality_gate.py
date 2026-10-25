@@ -32,7 +32,9 @@ if hasattr(sys.stderr, "reconfigure"):
 # ═══════════════════════════════════════════════════════════════
 
 MIN_CONTENT_LENGTH = 800        # 최소 글자 수 (HTML 태그 제외 순수 텍스트)
-TARGET_MAX_CONTENT_LENGTH = 7500  # 자동 발행용 목표 상한 (레퍼런스/CTA 포함 순수 텍스트)
+WARN_CONTENT_LENGTH = 3200      # 이 길이를 넘으면 주의 (본문만, 참고자료·관련글 제외)
+TARGET_MAX_CONTENT_LENGTH = 3800  # 자동 발행용 상한 (본문만, 참고자료·관련글 제외). 모바일 가독성 기준
+MAX_H2_WARN = 6                 # H2 소제목이 이 개수를 넘으면 주의 (섹션 과다 = 장문의 주원인)
 MAX_CONTENT_LENGTH = 50000      # 비정상적으로 긴 글 (AI 무한 반복 의심)
 MIN_HEADINGS = 2                # 최소 H2/H3 소제목 수
 MIN_TITLE_LENGTH = 5            # 제목 최소 글자 수
@@ -128,8 +130,8 @@ FABRICATED_EXPERIENCE_PATTERNS = [
 ]
 
 # 가치 요소: 근거가 있을 때 넣는 모듈. 최소 개수 미달이면 실패.
-VALUE_MODULE_MIN = 3
-VALUE_MODULE_WARN = 2
+VALUE_MODULE_MIN = 2
+VALUE_MODULE_WARN = 1
 
 # 지원사업·공고형, 생활 정보형(보조금·바우처·환급) 글 판별과 접수기간 표기 확인
 PROGRAM_TITLE_PATTERN = r"지원사업|지원금|보조금|바우처|환급|모집|공고"
@@ -269,17 +271,38 @@ def check_title(report: QualityReport, title: str):
         report.pass_check("제목 금지 패턴", "위반 없음")
 
 
-def check_content_length(report: QualityReport, plain_text: str):
-    """본문 글자 수 검증"""
-    length = len(plain_text)
+def split_body_html(html: str) -> str:
+    """자동으로 붙는 '근거와 참고자료'·'함께 읽으면 좋은 글' 영역을 뺀 본문 HTML"""
+    return re.split(
+        r'<div[^>]*class=["\']references["\'][^>]*>|<div\s+style=["\'][^"\']*margin:\s*3rem',
+        html,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+
+
+def check_content_length(report: QualityReport, html: str):
+    """본문 글자 수 검증 (참고자료·관련글 제외, 독자가 실제로 읽는 본문 기준)"""
+    length = len(strip_html(split_body_html(html)))
     if length < MIN_CONTENT_LENGTH:
         report.fail_check("본문 분량", f"{length}자 — 최소 {MIN_CONTENT_LENGTH}자 필요")
-    elif length > TARGET_MAX_CONTENT_LENGTH:
-        report.fail_check("본문 분량", f"{length}자 — 자동 발행 목표 상한 {TARGET_MAX_CONTENT_LENGTH}자 초과")
     elif length > MAX_CONTENT_LENGTH:
         report.fail_check("본문 분량", f"{length}자 — 비정상적으로 길음 (AI 반복 출력 의심)")
+    elif length > TARGET_MAX_CONTENT_LENGTH:
+        report.fail_check("본문 분량", f"{length}자 — 상한 {TARGET_MAX_CONTENT_LENGTH}자 초과 (모바일 독자가 읽기에 너무 김)")
+    elif length > WARN_CONTENT_LENGTH:
+        report.warn_check("본문 분량", f"{length}자 — {WARN_CONTENT_LENGTH}자 초과, 줄이는 편이 좋음")
     else:
         report.pass_check("본문 분량", f"{length}자")
+
+
+def check_h2_count(report: QualityReport, html: str):
+    """H2가 너무 많으면 섹션마다 설명이 붙어 글이 길어진다 (본문 기준)"""
+    h2_count = len(re.findall(r"<h2\b", split_body_html(html), re.IGNORECASE))
+    if h2_count > MAX_H2_WARN:
+        report.warn_check("섹션 수", f"H2 {h2_count}개 — {MAX_H2_WARN}개 이하 권장 (4~5개 목표)")
+    else:
+        report.pass_check("섹션 수", f"H2 {h2_count}개")
 
 
 def check_headings(report: QualityReport, headings: list):
@@ -612,12 +635,7 @@ def check_completeness(report: QualityReport, html: str):
     close_tags = len(re.findall(r'</(h[23]|p|div|ul|ol|table)>', html, re.IGNORECASE))
     
     # 마지막 문장은 자동으로 붙는 출처/관련글 영역을 제외한 본문 기준으로 본다.
-    body_html = re.split(
-        r'<div[^>]*class=["\']references["\'][^>]*>|<div\s+style=["\'][^"\']*margin:\s*3rem',
-        html,
-        maxsplit=1,
-        flags=re.IGNORECASE,
-    )[0]
+    body_html = split_body_html(html)
     plain = strip_html(body_html).strip() or strip_html(html).strip()
     ends_properly = plain and plain[-1] in '.!?。\”’'
     
@@ -669,8 +687,9 @@ def main():
     report = QualityReport()
 
     check_title(report, title)
-    check_content_length(report, plain_text)
+    check_content_length(report, html)
     check_headings(report, headings)
+    check_h2_count(report, html)
     check_tags(report, tags)
     check_images(report, image_count)
     check_banned_expressions(report, title, plain_text)
@@ -704,6 +723,7 @@ def main():
         "passed_count": report.passed,
         "failed_count": report.failed,
         "warning_count": report.warnings,
+        "body_chars": len(strip_html(split_body_html(html))),
         "details": [
             {"icon": icon, "name": name, "detail": detail}
             for icon, name, detail in report.checks

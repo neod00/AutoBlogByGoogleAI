@@ -504,6 +504,81 @@ function applyQualityGateGuards(title: string, html: string): { title: string; h
   return { title: safeTitle, html: safeHtml };
 }
 
+// ── Length control ───────────────────────────────────────────
+// 필수 블록이 많아 모델이 3,500자 넘게 쓰는 일이 잦다. 길면 설명 문장만 줄이는 압축 호출을 한 번 더 한다.
+// 글자 수는 이미지·참고자료·관련글을 붙이기 전 본문 기준이다 (품질 게이트의 본문 분량 기준과 같다).
+const COMPRESS_TRIGGER_CHARS = Number(process.env.COMPRESS_TRIGGER_CHARS || 3300);
+const COMPRESS_TARGET_CHARS = Number(process.env.COMPRESS_TARGET_CHARS || 2800);
+
+function htmlPlainLength(html: string): number {
+  return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().length;
+}
+
+function countMatches(html: string, pattern: RegExp): number {
+  return (html.match(pattern) || []).length;
+}
+
+// 압축본이 구조(표, 목록, 소제목, 기준일)를 잃었거나 너무 많이 잘렸으면 원본을 쓴다.
+function isSafeCompression(original: string, compressed: string): boolean {
+  const before = htmlPlainLength(original);
+  const after = htmlPlainLength(compressed);
+  if (after >= before || after < before * 0.5) return false;
+  if (/\[(?:\/)?(?:TITLE|POST|TAGS|SOURCES|IMAGE_KEYWORDS)\]/.test(compressed)) return false;
+  if (countMatches(original, /<table\b/gi) > countMatches(compressed, /<table\b/gi)) return false;
+  if (countMatches(original, /<ol\b/gi) > 0 && countMatches(compressed, /<ol\b/gi) === 0) return false;
+  if (countMatches(compressed, /<h2\b/gi) < Math.min(3, countMatches(original, /<h2\b/gi))) return false;
+  const asOf = /20\d{2}년\s*\d{1,2}월\s*기준/;
+  if (asOf.test(original) && !asOf.test(compressed)) return false;
+  // 고유 수치(반복 제외)가 크게 줄었다면 사실을 잃은 것이다. 반복된 수치를 한 번만 남기는 것은 허용한다.
+  const figures = (h: string) => new Set(h.replace(/<[^>]+>/g, " ").match(/\d[\d,.]*/g) || []);
+  const keptFigures = [...figures(original)].filter(f => figures(compressed).has(f)).length;
+  if (keptFigures < figures(original).size * 0.85) return false;
+  return true;
+}
+
+async function compressLongPost(post: string): Promise<string> {
+  const length = htmlPlainLength(post);
+  if (length <= COMPRESS_TRIGGER_CHARS) return post;
+
+  console.error(`[generate] Body is ${length} chars (> ${COMPRESS_TRIGGER_CHARS}). Compressing to ~${COMPRESS_TARGET_CHARS}...`);
+  const prompt = `아래 HTML 블로그 본문을 모바일 독자가 읽기 쉽게 ${COMPRESS_TARGET_CHARS}자 안팎(태그 제외 순수 텍스트)으로 줄이세요.
+
+줄이는 규칙:
+- 숫자, 날짜, 금액, 기관명, 조건, 예외는 그대로 둡니다. 빼지 마세요.
+- <table>, <ol>, <ul>의 구조와 항목, "YYYY년 M월 기준" 문장은 유지합니다.
+- 줄이는 대상은 설명·배경·수식 문장, 앞 내용을 다시 말하는 문장, 새 사실이 없는 문단입니다.
+- 새 사실이 없는 섹션은 통째로 삭제해도 됩니다. 단, <h2>는 3개 이상 남기세요.
+- 같은 수치를 여러 번 반복한 문장은 한 번만 남깁니다.
+- 새로운 내용, 새 수치, 새 링크를 추가하지 마세요. 문단은 180자 이내로 유지합니다.
+- 출력은 HTML 본문만 쓰세요. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 마세요.
+
+[본문]
+${post}`;
+
+  try {
+    const result = await generateContentWithAiFallback(genAI, {
+      model: MAIN_MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: NO_THINKING,
+    }, 1, "[compress]", { openaiMaxOutputTokens: 8_000, openaiTimeoutMs: 120_000 });
+
+    const compressed = (result.text || "")
+      .replace(/^\s*```(?:html)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+
+    if (!compressed || !isSafeCompression(post, compressed)) {
+      console.error("[generate] Compression rejected (structure or facts lost). Keeping original.");
+      return post;
+    }
+    console.error(`[generate] Compressed: ${length} -> ${htmlPlainLength(compressed)} chars`);
+    return compressed;
+  } catch (error) {
+    console.error("[generate] Compression failed. Keeping original:", error);
+    return post;
+  }
+}
+
 type RssPost = { title: string; link: string };
 
 // RSS 제목은 엔티티가 이중으로 인코딩되어 온다 (예: &amp;mdash;).
@@ -681,6 +756,9 @@ async function main() {
   // Strip accidental reference sections from POST
   post = post.replace(/<h[23][^>]*>\s*(참고|참고:|참고 자료|출처)[^<]*<\/h[23]>[\s\S]*?(?=<h[23]|$)/gi, "");
   post = restoreInternalLinks(post, existingPosts);
+
+  // 이미지·참고자료·관련글을 붙이기 전에 본문 길이를 맞춘다.
+  post = await compressLongPost(post);
 
   // Build a compact, visible reference section from model sources and grounding metadata.
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
