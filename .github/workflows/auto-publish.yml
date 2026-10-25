@@ -3,6 +3,15 @@ name: Climate Insight Auto Blog Publish
 on:
   repository_dispatch:
     types: [publish_post]
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "발행할 주제 (수동 테스트용)"
+        required: true
+      template:
+        description: "템플릿 (review, qa, interview, investment)"
+        required: false
+        default: "qa"
 
 concurrency:
   group: climate-insight-auto-publish
@@ -53,8 +62,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
-          PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || 'review' }}
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic || inputs.topic }}
+          PUBLISH_TEMPLATE: ${{ github.event.client_payload.template || inputs.template || 'review' }}
         run: |
           echo "Generating Climate Insight blog post for: $PUBLISH_TOPIC"
           npx tsx scripts/generate-content.ts "$PUBLISH_TOPIC" "$PUBLISH_TEMPLATE" > /tmp/blog_output.json
@@ -62,7 +71,7 @@ jobs:
 
       - name: Quality gate
         env:
-          PUBLISH_TOPIC: ${{ github.event.client_payload.topic }}
+          PUBLISH_TOPIC: ${{ github.event.client_payload.topic || inputs.topic }}
         run: |
           if ! python scripts/quality_gate.py \
             --content-file /tmp/blog_output.json \
