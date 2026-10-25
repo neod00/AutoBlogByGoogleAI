@@ -30,18 +30,21 @@ const MAIN_MODEL = "gemini-2.5-flash";
 const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-3.5-flash-lite";
 const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
 
-// 보조 모델이 거부되면(종료, 권한 없음, 설정 오류) 이후 호출은 처음부터 기본 모델을 쓴다.
-// 매 호출마다 실패를 한 번씩 거치며 지연과 로그 소음이 생기는 것을 막는다.
-let lightModelRejected = false;
+// 보조 모델 호출 설정 후보. gemini-3.5-flash-lite는 thinkingBudget: 0을 주면 400(INVALID_ARGUMENT)을 낸다 (2026-10 시험).
+// 3.x 계열은 추론 설정 방식이 달라서이므로, 거부되면 추론 설정 없이 한 번 더 시도한다.
+// 후보를 모두 거부당하면 이후 호출은 처음부터 기본 모델을 쓴다. 매 호출마다 실패를 한 번씩 거치는 지연과 로그 소음을 막는다.
+const LIGHT_CONFIG_CANDIDATES: any[] = [NO_THINKING, {}];
+let lightConfigIndex = 0;
 
 async function generateLightContent(contents: any, logPrefix: string): Promise<{ text: string }> {
-  if (!lightModelRejected) {
+  while (lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length) {
+    const config = LIGHT_CONFIG_CANDIDATES[lightConfigIndex];
     try {
-      return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+      return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config }, 1, logPrefix);
     } catch (error) {
-      // 모델이 계정에 열려 있지 않거나 종료되면 기본 모델로 되돌린다.
-      lightModelRejected = true;
-      console.error(`${logPrefix} ${LIGHT_MODEL} failed; using ${MAIN_MODEL} for the rest of this run:`, (error as any)?.message || error);
+      lightConfigIndex++;
+      const next = lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length ? "retrying without thinking config" : `using ${MAIN_MODEL} for the rest of this run`;
+      console.error(`${logPrefix} ${LIGHT_MODEL} failed (${next}):`, (error as any)?.message || error);
     }
   }
   return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);

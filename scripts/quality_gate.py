@@ -429,6 +429,13 @@ def detect_value_modules(html: str, plain_text: str) -> list:
         if re.search(r"자료|항목|체크|담당|준비|제출|대상|금액|신청|요금|비용|조건", strip_html(thead)):
             found.append("실무 표")
             break
+    if "실무 표" not in found:
+        # 헤더 단어가 목록에 없어도 헤더 + 데이터 행 2개 이상인 표는 독자가 저장해 둘 데이터 표다.
+        # 분량을 줄이면서 FAQ·일정이 빠진 글(전기차 보조금 시험 글)이 가치 요소 0개로 막힌 사례 (2026-10).
+        for table in re.findall(r"<table\b.*?</table>", html, re.IGNORECASE | re.DOTALL):
+            if len(re.findall(r"<tr\b", table, re.IGNORECASE)) >= 3:
+                found.append("실무 표")
+                break
     if re.search(r"<h2[^>]*>[^<]*(일정|앞으로)", html, re.IGNORECASE):
         found.append("앞으로의 일정")
     return found
