@@ -574,55 +574,80 @@ function isSafeCompression(original: string, compressed: string): boolean {
   // 고유 수치(반복 제외)가 크게 줄었다면 사실을 잃은 것이다. 반복된 수치를 한 번만 남기는 것은 허용한다.
   const figures = (h: string) => new Set(h.replace(/<[^>]+>/g, " ").match(/\d[\d,.]*/g) || []);
   const keptFigures = [...figures(original)].filter(f => figures(compressed).has(f)).length;
-  if (keptFigures < figures(original).size * 0.85) return false;
+  // 중복 섹션을 통째로 지우면 수치도 함께 빠지므로 60%만 요구한다. 표·목록·기준일은 위에서 따로 지킨다.
+  if (keptFigures < figures(original).size * 0.6) return false;
   return true;
 }
 
-async function compressLongPost(post: string): Promise<string> {
+// 압축 1회. 목표 글자 수만 주면 모델이 5% 정도만 줄였다 (2,846 -> 2,708자, 2026-10).
+// 그래서 줄여야 할 비율과 남길 구조를 직접 지정한다.
+async function compressOnce(post: string): Promise<string> {
   const length = htmlPlainLength(post);
-  if (length <= COMPRESS_TRIGGER_CHARS) return post;
+  const cutPercent = Math.max(10, Math.round((1 - COMPRESS_TARGET_CHARS / length) * 100));
+  const prompt = `아래 HTML 블로그 본문은 ${length}자입니다(태그 제외). 모바일 독자에게 너무 깁니다.
+${COMPRESS_TARGET_CHARS}자 이하가 되도록 **전체의 약 ${cutPercent}%를 삭제**하세요. 문장을 다듬는 수준이 아니라 문단과 섹션을 지워야 합니다.
 
-  console.error(`[generate] Body is ${length} chars (> ${COMPRESS_TRIGGER_CHARS}). Compressing to ~${COMPRESS_TARGET_CHARS}...`);
-  const prompt = `아래 HTML 블로그 본문을 모바일 독자가 읽기 쉽게 ${COMPRESS_TARGET_CHARS}자 안팎(태그 제외 순수 텍스트)으로 줄이세요.
+결과 구조:
+- 도입 문단 1개 (2~3문장, 누가·얼마·언제를 바로 답함)
+- <h2> 섹션 3~4개. 각 섹션 본문은 2문장 이내. 표·목록은 유지
+- 자주 묻는 질문이 있으면 2개만 남기고, 답은 1문장
+- 마지막 <ol> 1개 (3개 항목, 각 1문장)
+- "YYYY년 M월 기준" 문장 1개
 
-줄이는 규칙:
-- 숫자, 날짜, 금액, 기관명, 조건, 예외는 그대로 둡니다. 빼지 마세요.
-- <table>, <ol>, <ul>의 구조와 항목, "YYYY년 M월 기준" 문장은 유지합니다.
-- 줄이는 대상은 설명·배경·수식 문장, 앞 내용을 다시 말하는 문장, 새 사실이 없는 문단입니다.
-- 새 사실이 없는 섹션은 통째로 삭제해도 됩니다. 단, <h2>는 3개 이상 남기세요.
-- "~하는 것이 중요합니다", "~하는 것이 좋습니다" 같은 조언형 꼬리 문장은 지웁니다.
-- 제도의 취지·배경 설명은 1문장 이내로 줄입니다.
-- 같은 수치를 여러 번 반복한 문장은 한 번만 남깁니다. 같은 금액 묶음(예: 분야별 최대 금액)은 표 하나에만 두고 다른 섹션의 반복은 지웁니다.
-- "가능성 있음", "확인 필요" 같은 메모가 붙은 문장이나 항목은 통째로 지웁니다.
-- 도입부의 블로그 소개 문장, 상투적인 다짐 문장은 지웁니다.
-- 새로운 내용, 새 수치, 새 링크를 추가하지 마세요. 문단은 2문장, 140자 이내로 유지합니다.
-- 출력은 HTML 본문만 쓰세요. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 마세요.
+지울 것:
+- 제도 취지·배경·전망 설명, 앞 내용을 다시 말하는 문장, 표와 같은 내용을 문장으로 다시 쓴 것
+- "~하는 것이 중요합니다", "~하는 것이 좋습니다" 같은 조언형 문장
+- 새 사실이 없는 섹션 전체, 날짜 없는 일정 항목
+- "가능성 있음", "확인 필요" 메모가 붙은 문장이나 항목
+
+지키는 것:
+- 남긴 문장의 숫자, 날짜, 금액, 기관명, 조건은 바꾸지 않습니다. <table>은 그대로 둡니다.
+- 새로운 내용, 새 수치, 새 링크를 추가하지 않습니다.
+- 출력은 HTML 본문만 씁니다. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 않습니다.
 
 [본문]
 ${post}`;
 
-  try {
-    const result = await generateContentWithAiFallback(genAI, {
-      model: MAIN_MODEL,
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: NO_THINKING,
-    }, 1, "[compress]", { openaiMaxOutputTokens: 8_000, openaiTimeoutMs: 120_000 });
+  const result = await generateContentWithAiFallback(genAI, {
+    model: MAIN_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: NO_THINKING,
+  }, 1, "[compress]", { openaiMaxOutputTokens: 8_000, openaiTimeoutMs: 120_000 });
 
-    const compressed = (result.text || "")
-      .replace(/^\s*```(?:html)?\s*/i, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
+  return (result.text || "")
+    .replace(/^\s*```(?:html)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+}
 
-    if (!compressed || !isSafeCompression(post, compressed)) {
-      console.error("[generate] Compression rejected (structure or facts lost). Keeping original.");
-      return post;
+// 길면 최대 2회 압축한다. 각 회차 결과가 구조·사실을 잃으면 그 회차는 버리고 직전 결과를 쓴다.
+async function compressLongPost(post: string): Promise<string> {
+  let current = post;
+  for (let pass = 1; pass <= 2; pass++) {
+    const length = htmlPlainLength(current);
+    if (length <= COMPRESS_TRIGGER_CHARS) break;
+    console.error(`[generate] Compress pass ${pass}: ${length} chars (> ${COMPRESS_TRIGGER_CHARS}), target ${COMPRESS_TARGET_CHARS}`);
+    try {
+      const compressed = await compressOnce(current);
+      if (!compressed || !isSafeCompression(current, compressed)) {
+        console.error(`[generate] Compress pass ${pass} rejected (structure or facts lost). Keeping previous.`);
+        break;
+      }
+      console.error(`[generate] Compress pass ${pass}: ${length} -> ${htmlPlainLength(compressed)} chars`);
+      current = compressed;
+    } catch (error) {
+      console.error(`[generate] Compress pass ${pass} failed. Keeping previous:`, error);
+      break;
     }
-    console.error(`[generate] Compressed: ${length} -> ${htmlPlainLength(compressed)} chars`);
-    return compressed;
-  } catch (error) {
-    console.error("[generate] Compression failed. Keeping original:", error);
-    return post;
   }
+  return current;
+}
+
+// 기준일 문장은 게이트 필수 항목인데 모델이 자주 빠뜨린다 (2026-10 시험에서 게이트 실패). 없으면 코드가 붙인다.
+function ensureAsOfSentence(post: string, year: string, month: string): string {
+  if (/20\d{2}년\s*\d{1,2}월\s*기준/.test(post.replace(/<[^>]+>/g, " "))) return post;
+  console.error("[generate] As-of sentence missing. Appending.");
+  return `${post}\n<p>이 글은 ${year}년 ${month}월 기준입니다.</p>`;
 }
 
 type RssPost = { title: string; link: string };
@@ -767,6 +792,7 @@ async function main() {
     4. Ensure all tags ([TITLE], [POST], etc.) are present.
     5. Write in natural Korean sentences. Avoid mechanical replacements, slogan-like endings, and stiff AI summary tone.
     6. In [SOURCES], prefer official/government/international-organization/company pages. Use this format when a URL is available: "자료 제목 - 기관/언론사 - https://...".
+    7. LENGTH IS A HARD LIMIT: [POST] 본문은 태그를 뺀 순수 텍스트 기준 1,800자 이내(생활 정보형은 1,500자 이내)로 씁니다. H2는 3~4개, 각 섹션 본문은 2~3문장입니다. 독자가 가져갈 답 3개(누가, 얼마, 언제·어디서)에 답하지 않는 문장은 쓰지 마세요. 길면 섹션을 통째로 빼세요.
     
     DIRECTIVES:
     ${blogBase}
@@ -812,6 +838,12 @@ async function main() {
 
   // 이미지·참고자료·관련글을 붙이기 전에 본문 길이를 맞춘다.
   post = await compressLongPost(post);
+  const kstParts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", year: "numeric", month: "numeric" }).formatToParts(new Date());
+  post = ensureAsOfSentence(
+    post,
+    kstParts.find(p => p.type === "year")?.value || "",
+    kstParts.find(p => p.type === "month")?.value || "",
+  );
 
   // Build a compact, visible reference section from model sources and grounding metadata.
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
