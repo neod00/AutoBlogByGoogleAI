@@ -805,7 +805,7 @@ async function main() {
     4. Ensure all tags ([TITLE], [POST], etc.) are present.
     5. Write in natural Korean sentences. Avoid mechanical replacements, slogan-like endings, and stiff AI summary tone.
     6. In [SOURCES], prefer official/government/international-organization/company pages. Use this format when a URL is available: "자료 제목 - 기관/언론사 - https://...".
-    7. LENGTH IS A HARD LIMIT: [POST] 본문은 태그를 뺀 순수 텍스트 기준 1,800자 이내(생활 정보형은 1,500자 이내)로 씁니다. H2는 3~4개, 각 섹션 본문은 2~3문장입니다. 독자가 가져갈 답 3개(누가, 얼마, 언제·어디서)에 답하지 않는 문장은 쓰지 마세요. 길면 섹션을 통째로 빼세요. 지원금·보조금·바우처 글은 접수 시점(확인된 날짜, 없으면 "2월 초 접수 시작"처럼 월 단위)과 마감 방식(마감일, "예산 소진 시 마감", 또는 "상시 신청")과 신청 기관을 반드시 포함하세요. 지자체마다 다르면 대표 지자체 1~2곳의 접수 시점을 쓰세요.
+    7. LENGTH IS A HARD LIMIT: [POST] 본문은 태그를 뺀 순수 텍스트 기준 1,800자 이내(생활 정보형은 1,500자 이내)로 씁니다. H2는 3~4개, 각 섹션 본문은 2~3문장입니다. 대상·금액·기간·일정 같은 핵심 사실은 <table> 1개(헤더 행 + 데이터 행 2개 이상)로 정리하세요. 표는 필수입니다. 독자가 가져갈 답 3개(누가, 얼마, 언제·어디서)에 답하지 않는 문장은 쓰지 마세요. 길면 섹션을 통째로 빼세요. 지원금·보조금·바우처 글은 접수 시점(확인된 날짜, 없으면 "2월 초 접수 시작"처럼 월 단위)과 마감 방식(마감일, "예산 소진 시 마감", 또는 "상시 신청")과 신청 기관을 반드시 포함하세요. 지자체마다 다르면 대표 지자체 1~2곳의 접수 시점을 쓰세요.
     
     DIRECTIVES:
     ${blogBase}
