@@ -12,6 +12,10 @@ on:
         description: "템플릿 (review, qa, interview, investment)"
         required: false
         default: "qa"
+      dry_run:
+        description: "true면 티스토리에 발행하지 않고 생성 결과만 아티팩트로 남김"
+        required: false
+        default: "false"
 
 concurrency:
   group: climate-insight-auto-publish
@@ -106,8 +110,19 @@ jobs:
             exit 1
           fi
 
+      - name: Save dry-run output
+        if: always() && inputs.dry_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-output
+          path: |
+            /tmp/blog_output.json
+            /tmp/quality_gate_result.json
+          if-no-files-found: ignore
+
       - name: Publish to Tistory
         id: publish
+        if: inputs.dry_run != 'true'
         env:
           TISTORY_BLOG_URL: https://climate-insight.tistory.com
           TISTORY_KAKAO_ID: ${{ secrets.TISTORY_KAKAO_ID }}
@@ -124,7 +139,7 @@ jobs:
         run: cat /tmp/chromedriver.log || echo "No chromedriver log found"
 
       - name: Report cookie status
-        if: always()
+        if: always() && inputs.dry_run != 'true'
         env:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           APP_URL: ${{ github.event.client_payload.app_url || 'https://auto-blog-by-google-ai.vercel.app' }}
@@ -168,7 +183,7 @@ jobs:
           fi
 
       - name: Send notification email
-        if: always()
+        if: always() && inputs.dry_run != 'true'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

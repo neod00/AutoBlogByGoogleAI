@@ -472,7 +472,7 @@ async function buildReferenceSection(sourceLines: string[], groundingChunks: any
     if (!key || seen.has(key)) continue;
     seen.add(key);
     refs.push(source);
-    if (refs.length >= 5) break;
+    if (refs.length >= 3) break;
   }
 
   if (refs.length === 0) return "";
@@ -547,10 +547,10 @@ function applyQualityGateGuards(title: string, html: string): { title: string; h
 }
 
 // ── Length control ───────────────────────────────────────────
-// 필수 블록이 많아 모델이 3,500자 넘게 쓰는 일이 잦다. 길면 설명 문장만 줄이는 압축 호출을 한 번 더 한다.
+// 지시문의 목표 분량을 넘겨 쓰는 일이 잦다 (3,258자 글도 길다는 피드백, 2026-10). 길면 설명 문장만 줄이는 압축 호출을 한 번 더 한다.
 // 글자 수는 이미지·참고자료·관련글을 붙이기 전 본문 기준이다 (품질 게이트의 본문 분량 기준과 같다).
-const COMPRESS_TRIGGER_CHARS = Number(process.env.COMPRESS_TRIGGER_CHARS || 3300);
-const COMPRESS_TARGET_CHARS = Number(process.env.COMPRESS_TARGET_CHARS || 2800);
+const COMPRESS_TRIGGER_CHARS = Number(process.env.COMPRESS_TRIGGER_CHARS || 2000);
+const COMPRESS_TARGET_CHARS = Number(process.env.COMPRESS_TARGET_CHARS || 1600);
 
 function htmlPlainLength(html: string): number {
   return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().length;
@@ -564,7 +564,7 @@ function countMatches(html: string, pattern: RegExp): number {
 function isSafeCompression(original: string, compressed: string): boolean {
   const before = htmlPlainLength(original);
   const after = htmlPlainLength(compressed);
-  if (after >= before || after < before * 0.5) return false;
+  if (after >= before || after < before * 0.4) return false;
   if (/\[(?:\/)?(?:TITLE|POST|TAGS|SOURCES|IMAGE_KEYWORDS)\]/.test(compressed)) return false;
   if (countMatches(original, /<table\b/gi) > countMatches(compressed, /<table\b/gi)) return false;
   if (countMatches(original, /<ol\b/gi) > 0 && countMatches(compressed, /<ol\b/gi) === 0) return false;
@@ -590,10 +590,12 @@ async function compressLongPost(post: string): Promise<string> {
 - <table>, <ol>, <ul>의 구조와 항목, "YYYY년 M월 기준" 문장은 유지합니다.
 - 줄이는 대상은 설명·배경·수식 문장, 앞 내용을 다시 말하는 문장, 새 사실이 없는 문단입니다.
 - 새 사실이 없는 섹션은 통째로 삭제해도 됩니다. 단, <h2>는 3개 이상 남기세요.
+- "~하는 것이 중요합니다", "~하는 것이 좋습니다" 같은 조언형 꼬리 문장은 지웁니다.
+- 제도의 취지·배경 설명은 1문장 이내로 줄입니다.
 - 같은 수치를 여러 번 반복한 문장은 한 번만 남깁니다. 같은 금액 묶음(예: 분야별 최대 금액)은 표 하나에만 두고 다른 섹션의 반복은 지웁니다.
 - "가능성 있음", "확인 필요" 같은 메모가 붙은 문장이나 항목은 통째로 지웁니다.
 - 도입부의 블로그 소개 문장, 상투적인 다짐 문장은 지웁니다.
-- 새로운 내용, 새 수치, 새 링크를 추가하지 마세요. 문단은 180자 이내로 유지합니다.
+- 새로운 내용, 새 수치, 새 링크를 추가하지 마세요. 문단은 2문장, 140자 이내로 유지합니다.
 - 출력은 HTML 본문만 쓰세요. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 마세요.
 
 [본문]
@@ -710,8 +712,9 @@ function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: stri
     })
     .sort((a, b) => b.score - a.score || a.idx - b.idx);
 
-  const related = scored.filter(p => p.score > 0).slice(0, 3);
-  const fallback = scored.filter(p => p.score > -50).slice(0, 3);
+  // 관련 글 상자도 체감 길이를 늘리므로 2개만 둔다.
+  const related = scored.filter(p => p.score > 0).slice(0, 2);
+  const fallback = scored.filter(p => p.score > -50).slice(0, 2);
 
   return (related.length > 0 ? related : fallback).map(({ title, link }) => ({ title, link }));
 }
