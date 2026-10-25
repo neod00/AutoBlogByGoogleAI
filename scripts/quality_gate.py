@@ -81,6 +81,8 @@ BANNED_EXPRESSIONS = [
 
 TITLE_BANNED_PATTERNS = [
     (r"20\d{2}년\s*[,:\-—]", "연도 뒤 쉼표/콜론/대시 패턴"),
+    (r"20\d{2}년[^:：]*[:：]", "연도가 있는 제목의 콜론"),  # "2026년 탄소중립포인트: ~"처럼 사이에 단어가 끼어도 잡는다
+    (r"(현명하게|똑똑하게|알뜰하게)\s*!*\s*$", "정보 없는 제목 끝맺음"),
     (r"(완벽\s*가이드|모든\s*것)\s*$", "상투적 제목 끝맺음"),
     (r"(서막|원년|진화)", "상투적 제목 표현"),
     (r"!{2,}", "느낌표 과다 사용"),
@@ -114,6 +116,8 @@ TEMPLATE_LEFTOVER_PATTERNS = [
     (r"이\s*글을\s*(다|끝까지)\s*읽으", "'이 글을 다 읽으면' 도입 문구"),
     (r"예상\s*읽기\s*시간|읽는\s*데는?\s*약\s*\d+\s*분", "예상 읽기 시간"),
     (r"다음에\s*검색해\s*볼\s*키워드", "'다음에 검색해볼 키워드'"),
+    (r"기후인사이트(는|에서는)\s.{0,60}(안내|정리|소개|알려\s*드립)", "블로그 자기소개 문장"),
+    (r"지구를\s*위한\s*작은", "'지구를 위한 작은 노력' 상투구"),
 ]
 
 # 키워드가 없는 범용 소제목
@@ -148,6 +152,21 @@ BODY_RELIEF_PATTERN = r"면제|면책|유예|적용\s*제외"
 # 같은 수치 반복 (연도 제외)
 REPEATED_FIGURE_PATTERN = r"\d[\d,.]*\s*(?:조|억|만)?\s*(?:원|유로|달러|톤|개사|%)"
 MAX_FIGURE_REPEAT = 3
+# 같은 수치가 표·목록을 포함해 이 개수 이상의 섹션(H2 단위, 도입부 포함)에 나오면 실패.
+# 예: "에너지 10만·녹색생활 7만·자동차 10만 원" 묶음이 도입부, 표, Q3, 가상 사례에 네 번 반복된 글 (2026-10)
+MAX_FIGURE_SECTIONS = 4
+
+# 모델이 확인하지 못한 사실을 그대로 드러낸 표현. 확인된 값만 쓰거나 항목을 빼야 한다.
+UNVERIFIED_HEDGE_PATTERNS = [
+    (r"가능성\s*(이\s*)?있음", "'~가능성 있음'"),
+    (r"(최신\s*)?정보\s*확인\s*필요", "'최신 정보 확인 필요'"),
+    (r"확인\s*필요\s*[.)]", "'확인 필요' 메모"),
+    (r"조정되었을\s*(수도|가능성)", "'조정되었을 가능성'"),
+    (r"(으로|로)\s*추정됨", "'~로 추정됨'"),
+]
+
+# 근거로 쓰기 어려운 출처 (SNS, 개인 블로그, 영상)
+SOCIAL_SOURCE_PATTERN = r"instagram|facebook|youtube|youtu\.be|blog\.naver|cafe\.naver|brunch\.co\.kr|threads\.net|twitter\.com|인스타그램|유튜브"
 
 # 기존 글 제목과의 유사도 (문자 bigram Jaccard)
 TITLE_SIMILARITY_WARN = 0.45
@@ -489,6 +508,42 @@ def check_figure_repetition(report: QualityReport, html: str):
         report.pass_check("수치 반복", f"같은 수치 {MAX_FIGURE_REPEAT}회 이하")
 
 
+def check_figure_spread(report: QualityReport, html: str):
+    """같은 수치 묶음을 여러 섹션에서 다시 보여주는지 (표·목록 포함, 본문 기준). 장문의 주원인"""
+    sections = re.split(r"<h2\b", split_body_html(html), flags=re.IGNORECASE)
+    spread = Counter()
+    for section in sections:
+        figures = {re.sub(r"\s+", "", f) for f in re.findall(REPEATED_FIGURE_PATTERN, strip_html(section))}
+        spread.update(figures)
+    over = [(f, c) for f, c in spread.most_common() if c >= MAX_FIGURE_SECTIONS]
+    if over:
+        detail = ", ".join(f"'{f}' {c}개 섹션" for f, c in over[:3])
+        report.fail_check("섹션 간 수치 반복", f"{detail} — 같은 수치는 표 하나와 꼭 필요한 문장에만")
+    else:
+        report.pass_check("섹션 간 수치 반복", f"{MAX_FIGURE_SECTIONS}개 섹션 이상 반복 없음")
+
+
+def check_unverified_hedges(report: QualityReport, plain_text: str):
+    """확인하지 못한 수치를 '가능성 있음', '확인 필요'로 남긴 흔적"""
+    found = [label for pattern, label in UNVERIFIED_HEDGE_PATTERNS if re.search(pattern, plain_text)]
+    if found:
+        report.fail_check("미확인 표현", ", ".join(found) + " — 확인된 값만 쓰거나 항목을 빼야 함")
+    else:
+        report.pass_check("미확인 표현", "없음")
+
+
+def check_social_sources(report: QualityReport, html: str):
+    """하단 참고자료에 SNS·블로그·영상 출처가 섞였는지"""
+    match = re.search(r'<div[^>]*class=["\']references["\'][^>]*>.*?</div>', html, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return
+    hits = sorted({m.lower() for m in re.findall(SOCIAL_SOURCE_PATTERN, match.group(0), re.IGNORECASE)})
+    if hits:
+        report.warn_check("출처 종류", f"SNS/블로그/영상 출처 포함: {', '.join(hits)}")
+    else:
+        report.pass_check("출처 종류", "SNS/블로그/영상 출처 없음")
+
+
 def _title_bigrams(title: str) -> set:
     normalized = re.sub(r"[\s\W_]+", "", html_lib.unescape(html_lib.unescape(title)).lower())
     return {normalized[i:i + 2] for i in range(len(normalized) - 1)}
@@ -704,6 +759,9 @@ def main():
     check_title_body_consistency(report, title, plain_text)
     check_program_deadlines(report, title, plain_text)
     check_figure_repetition(report, html)
+    check_figure_spread(report, html)
+    check_unverified_hedges(report, plain_text)
+    check_social_sources(report, html)
     check_cannibalization(report, title, existing_titles)
     check_table_requirement(report, title, plain_text, table_count)
     check_source_quality(report, html, plain_text)
