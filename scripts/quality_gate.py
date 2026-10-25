@@ -143,7 +143,11 @@ PROGRAM_TITLE_PATTERN = r"지원사업|지원금|보조금|바우처|환급|모�
 ALWAYS_OPEN_PATTERN = r"상시\s*(신청|접수|운영|가입)"
 PROGRAM_BODY_KEYWORD = "지원사업"
 PROGRAM_BODY_MIN_MENTIONS = 3
-DATE_PATTERN = r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}"
+# 접수기간으로 인정하는 시점 표기: 완전한 날짜("3월 4일", "2026.3.4")와 월 단위 표기("2월 초", "3월부터", "12월 마감").
+# 지자체별로 접수 시기가 달라 정확한 날짜를 확인할 수 없는 제도(전기차 보조금 등)에서는 월 단위가 정직한 표기다 (2026-10 시험).
+DATE_PATTERN = r"\d{1,2}월\s*\d{1,2}일|\d{4}\.\s?\d{1,2}\.\s?\d{1,2}|\d{1,2}월\s*(?:초|중순|말|부터|까지|중|마감|접수|시작)"
+# 마감일 대신 선착순·예산 소진으로 닫히는 제도의 표기
+FIRST_COME_PATTERN = r"선착순|예산\s*소진|소진\s*(시|되면|될\s*때)|조기\s*마감"
 
 # 제목의 제재 표현과 본문의 면책·유예가 충돌하는지
 TITLE_SANCTION_PATTERN = r"과징금|벌금|처벌|과태료"
@@ -429,6 +433,13 @@ def detect_value_modules(html: str, plain_text: str) -> list:
         if re.search(r"자료|항목|체크|담당|준비|제출|대상|금액|신청|요금|비용|조건", strip_html(thead)):
             found.append("실무 표")
             break
+    if "실무 표" not in found:
+        # 헤더 단어가 목록에 없어도 헤더 + 데이터 행 2개 이상인 표는 독자가 저장해 둘 데이터 표다.
+        # 분량을 줄이면서 FAQ·일정이 빠진 글(전기차 보조금 시험 글)이 가치 요소 0개로 막힌 사례 (2026-10).
+        for table in re.findall(r"<table\b.*?</table>", html, re.IGNORECASE | re.DOTALL):
+            if len(re.findall(r"<tr\b", table, re.IGNORECASE)) >= 3:
+                found.append("실무 표")
+                break
     if re.search(r"<h2[^>]*>[^<]*(일정|앞으로)", html, re.IGNORECASE):
         found.append("앞으로의 일정")
     return found
@@ -495,10 +506,16 @@ def check_program_deadlines(report: QualityReport, title: str, plain_text: str):
         report.pass_check("접수기간", "상시 신청 제도로 표기됨")
         return
     dates = re.findall(DATE_PATTERN, plain_text)
-    if len(dates) >= 2 and re.search(r"마감|접수", plain_text):
+    has_keyword = bool(re.search(r"마감|접수", plain_text))
+    if len(dates) >= 2 and has_keyword:
         report.pass_check("접수기간", f"날짜 {len(dates)}개와 접수/마감 표기 확인")
+    elif len(dates) >= 1 and has_keyword and re.search(FIRST_COME_PATTERN, plain_text):
+        report.pass_check("접수기간", "시작 시점과 선착순/예산 소진 마감 표기 확인")
     else:
-        report.fail_check("접수기간", "지원사업·보조금형 글인데 접수 시작일·마감일(또는 상시 신청 표기)이 없음")
+        # 어떤 문장 때문에 실패했는지 로그에 남긴다. 시험 글 본문을 내려받지 못해도 원인을 볼 수 있다.
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain_text) if re.search(r"접수|마감|신청\s*기간", s)]
+        sample = " / ".join(s[:70] for s in sentences[:2]) or "접수·마감 문장 없음"
+        report.fail_check("접수기간", f"지원사업·보조금형 글인데 접수 시작 시점·마감(또는 상시 신청, 선착순 표기)이 없음 — 시점 표기 {len(dates)}개, 관련 문장: {sample}")
 
 
 def check_figure_repetition(report: QualityReport, html: str):

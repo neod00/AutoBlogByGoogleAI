@@ -26,17 +26,29 @@ const genAI = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 const MAIN_MODEL = "gemini-2.5-flash";
 // 이미지 위치 분석·카테고리 분류처럼 단순한 보조 작업은 저가 모델로, 추론 없이 처리한다.
-const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-2.5-flash-lite";
+// gemini-2.5-flash-lite는 신규 사용자에게 종료되어 404가 난다 (2026-10, API 오류 메시지가 gemini-3.5-flash-lite를 안내).
+const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-3.5-flash-lite";
 const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
 
+// 보조 모델 호출 설정 후보. gemini-3.5-flash-lite는 thinkingBudget: 0을 주면 400(INVALID_ARGUMENT)을 낸다 (2026-10 시험).
+// 3.x 계열은 추론 설정 방식이 달라서이므로, 거부되면 추론 설정 없이 한 번 더 시도한다.
+// 후보를 모두 거부당하면 이후 호출은 처음부터 기본 모델을 쓴다. 매 호출마다 실패를 한 번씩 거치는 지연과 로그 소음을 막는다.
+// 3.x 계열은 매 실행 첫 호출이 400으로 한 번 실패했으므로 설정 없는 호출부터 시도한다. 2.x 계열은 추론 끄기부터 시도한다.
+const LIGHT_CONFIG_CANDIDATES: any[] = /^gemini-[3-9]/.test(LIGHT_MODEL) ? [{}, NO_THINKING] : [NO_THINKING, {}];
+let lightConfigIndex = 0;
+
 async function generateLightContent(contents: any, logPrefix: string): Promise<{ text: string }> {
-  try {
-    return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
-  } catch (error) {
-    // 2.5 계열은 과거 사용 이력이 있는 계정에만 열려 있어 Flash-Lite가 거부될 수 있다. 그때는 기본 모델로 되돌린다.
-    console.error(`${logPrefix} ${LIGHT_MODEL} failed, retrying with ${MAIN_MODEL}:`, error);
-    return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+  while (lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length) {
+    const config = LIGHT_CONFIG_CANDIDATES[lightConfigIndex];
+    try {
+      return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config }, 1, logPrefix);
+    } catch (error) {
+      lightConfigIndex++;
+      const next = lightConfigIndex < LIGHT_CONFIG_CANDIDATES.length ? "retrying with another config" : `using ${MAIN_MODEL} for the rest of this run`;
+      console.error(`${logPrefix} ${LIGHT_MODEL} failed (${next}):`, (error as any)?.message || error);
+    }
   }
+  return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
 }
 
 // ── Load directives ─────────────────────────────────────────
@@ -602,6 +614,7 @@ ${COMPRESS_TARGET_CHARS}자 이하가 되도록 **전체의 약 ${cutPercent}%�
 
 지키는 것:
 - 남긴 문장의 숫자, 날짜, 금액, 기관명, 조건은 바꾸지 않습니다. <table>은 그대로 둡니다.
+- 지원금·보조금·바우처 글이면 접수 시점(날짜 또는 월 단위)과 마감 방식(마감일, 예산 소진, 상시 신청) 문장과 신청 기관은 반드시 남깁니다. 지울 대상이 아닙니다.
 - 새로운 내용, 새 수치, 새 링크를 추가하지 않습니다.
 - 출력은 HTML 본문만 씁니다. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 않습니다.
 
@@ -792,7 +805,7 @@ async function main() {
     4. Ensure all tags ([TITLE], [POST], etc.) are present.
     5. Write in natural Korean sentences. Avoid mechanical replacements, slogan-like endings, and stiff AI summary tone.
     6. In [SOURCES], prefer official/government/international-organization/company pages. Use this format when a URL is available: "자료 제목 - 기관/언론사 - https://...".
-    7. LENGTH IS A HARD LIMIT: [POST] 본문은 태그를 뺀 순수 텍스트 기준 1,800자 이내(생활 정보형은 1,500자 이내)로 씁니다. H2는 3~4개, 각 섹션 본문은 2~3문장입니다. 독자가 가져갈 답 3개(누가, 얼마, 언제·어디서)에 답하지 않는 문장은 쓰지 마세요. 길면 섹션을 통째로 빼세요.
+    7. LENGTH IS A HARD LIMIT: [POST] 본문은 태그를 뺀 순수 텍스트 기준 1,800자 이내(생활 정보형은 1,500자 이내)로 씁니다. H2는 3~4개, 각 섹션 본문은 2~3문장입니다. 대상·금액·기간·일정 같은 핵심 사실은 <table> 1개(헤더 행 + 데이터 행 2개 이상)로 정리하세요. 표는 필수입니다. 독자가 가져갈 답 3개(누가, 얼마, 언제·어디서)에 답하지 않는 문장은 쓰지 마세요. 길면 섹션을 통째로 빼세요. 지원금·보조금·바우처 글은 접수 시점(확인된 날짜, 없으면 "2월 초 접수 시작"처럼 월 단위)과 마감 방식(마감일, "예산 소진 시 마감", 또는 "상시 신청")과 신청 기관을 반드시 포함하세요. 지자체마다 다르면 대표 지자체 1~2곳의 접수 시점을 쓰세요.
     
     DIRECTIVES:
     ${blogBase}
