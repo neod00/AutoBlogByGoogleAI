@@ -32,9 +32,9 @@ if hasattr(sys.stderr, "reconfigure"):
 # ═══════════════════════════════════════════════════════════════
 
 MIN_CONTENT_LENGTH = 800        # 최소 글자 수 (HTML 태그 제외 순수 텍스트)
-WARN_CONTENT_LENGTH = 3200      # 이 길이를 넘으면 주의 (본문만, 참고자료·관련글 제외)
-TARGET_MAX_CONTENT_LENGTH = 3800  # 자동 발행용 상한 (본문만, 참고자료·관련글 제외). 모바일 가독성 기준
-MAX_H2_WARN = 6                 # H2 소제목이 이 개수를 넘으면 주의 (섹션 과다 = 장문의 주원인)
+WARN_CONTENT_LENGTH = 2200      # 이 길이를 넘으면 주의 (본문만, 참고자료·관련글 제외)
+TARGET_MAX_CONTENT_LENGTH = 2800  # 자동 발행용 상한 (본문만, 참고자료·관련글 제외). 3,258자 글도 길다는 피드백으로 낮춤 (2026-10)
+MAX_H2_WARN = 5                 # H2 소제목이 이 개수를 넘으면 주의 (섹션 과다 = 장문의 주원인)
 MAX_CONTENT_LENGTH = 50000      # 비정상적으로 긴 글 (AI 무한 반복 의심)
 MIN_HEADINGS = 2                # 최소 H2/H3 소제목 수
 MIN_TITLE_LENGTH = 5            # 제목 최소 글자 수
@@ -134,7 +134,7 @@ FABRICATED_EXPERIENCE_PATTERNS = [
 ]
 
 # 가치 요소: 근거가 있을 때 넣는 모듈. 최소 개수 미달이면 실패.
-VALUE_MODULE_MIN = 2
+VALUE_MODULE_MIN = 1
 VALUE_MODULE_WARN = 1
 
 # 지원사업·공고형, 생활 정보형(보조금·바우처·환급) 글 판별과 접수기간 표기 확인
@@ -164,6 +164,10 @@ UNVERIFIED_HEDGE_PATTERNS = [
     (r"조정되었을\s*(수도|가능성)", "'조정되었을 가능성'"),
     (r"(으로|로)\s*추정됨", "'~로 추정됨'"),
 ]
+
+# 정보 없이 분량만 늘리는 조언형 꼬리 문장. 이 개수 이상이면 주의
+ADVICE_FILLER_PATTERN = r"(것이|게)\s*(중요합니다|좋습니다|바람직합니다|필요합니다)|도움이\s*될\s*것입니다|유리합니다"
+MAX_ADVICE_FILLER = 2
 
 # 근거로 쓰기 어려운 출처 (SNS, 개인 블로그, 영상)
 SOCIAL_SOURCE_PATTERN = r"instagram|facebook|youtube|youtu\.be|blog\.naver|cafe\.naver|brunch\.co\.kr|threads\.net|twitter\.com|인스타그램|유튜브"
@@ -319,7 +323,7 @@ def check_h2_count(report: QualityReport, html: str):
     """H2가 너무 많으면 섹션마다 설명이 붙어 글이 길어진다 (본문 기준)"""
     h2_count = len(re.findall(r"<h2\b", split_body_html(html), re.IGNORECASE))
     if h2_count > MAX_H2_WARN:
-        report.warn_check("섹션 수", f"H2 {h2_count}개 — {MAX_H2_WARN}개 이하 권장 (4~5개 목표)")
+        report.warn_check("섹션 수", f"H2 {h2_count}개 — {MAX_H2_WARN}개 이하 권장 (3~4개 목표)")
     else:
         report.pass_check("섹션 수", f"H2 {h2_count}개")
 
@@ -530,6 +534,15 @@ def check_unverified_hedges(report: QualityReport, plain_text: str):
         report.fail_check("미확인 표현", ", ".join(found) + " — 확인된 값만 쓰거나 항목을 빼야 함")
     else:
         report.pass_check("미확인 표현", "없음")
+
+
+def check_advice_filler(report: QualityReport, html: str):
+    """'~하는 것이 중요합니다' 같은 조언형 꼬리 문장 (본문 기준)"""
+    count = len(re.findall(ADVICE_FILLER_PATTERN, strip_html(split_body_html(html))))
+    if count > MAX_ADVICE_FILLER:
+        report.warn_check("조언형 문장", f"{count}개 — 정보 없는 '~것이 중요합니다'류 문장은 빼는 편이 좋음")
+    else:
+        report.pass_check("조언형 문장", f"{count}개")
 
 
 def check_social_sources(report: QualityReport, html: str):
@@ -762,6 +775,7 @@ def main():
     check_figure_spread(report, html)
     check_unverified_hedges(report, plain_text)
     check_social_sources(report, html)
+    check_advice_filler(report, html)
     check_cannibalization(report, title, existing_titles)
     check_table_requirement(report, title, plain_text, table_count)
     check_source_quality(report, html, plain_text)
