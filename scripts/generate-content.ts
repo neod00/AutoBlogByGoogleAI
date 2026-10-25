@@ -26,17 +26,25 @@ const genAI = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 const MAIN_MODEL = "gemini-2.5-flash";
 // 이미지 위치 분석·카테고리 분류처럼 단순한 보조 작업은 저가 모델로, 추론 없이 처리한다.
-const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-2.5-flash-lite";
+// gemini-2.5-flash-lite는 신규 사용자에게 종료되어 404가 난다 (2026-10, API 오류 메시지가 gemini-3.5-flash-lite를 안내).
+const LIGHT_MODEL = process.env.GEMINI_LIGHT_MODEL || "gemini-3.5-flash-lite";
 const NO_THINKING = { thinkingConfig: { thinkingBudget: 0 } };
 
+// 보조 모델이 거부되면(종료, 권한 없음, 설정 오류) 이후 호출은 처음부터 기본 모델을 쓴다.
+// 매 호출마다 실패를 한 번씩 거치며 지연과 로그 소음이 생기는 것을 막는다.
+let lightModelRejected = false;
+
 async function generateLightContent(contents: any, logPrefix: string): Promise<{ text: string }> {
-  try {
-    return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
-  } catch (error) {
-    // 2.5 계열은 과거 사용 이력이 있는 계정에만 열려 있어 Flash-Lite가 거부될 수 있다. 그때는 기본 모델로 되돌린다.
-    console.error(`${logPrefix} ${LIGHT_MODEL} failed, retrying with ${MAIN_MODEL}:`, error);
-    return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+  if (!lightModelRejected) {
+    try {
+      return await generateContentWithAiFallback(genAI, { model: LIGHT_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
+    } catch (error) {
+      // 모델이 계정에 열려 있지 않거나 종료되면 기본 모델로 되돌린다.
+      lightModelRejected = true;
+      console.error(`${logPrefix} ${LIGHT_MODEL} failed; using ${MAIN_MODEL} for the rest of this run:`, (error as any)?.message || error);
+    }
   }
+  return generateContentWithAiFallback(genAI, { model: MAIN_MODEL, contents, config: NO_THINKING }, 1, logPrefix);
 }
 
 // ── Load directives ─────────────────────────────────────────
