@@ -134,12 +134,15 @@ async function main() {
     process.exit(1);
   }
 
-  const repaired = { ...content, title: newTitle, html: `${newBody}\n${appendix}` };
+  // 모델이 실패와 무관한 제목까지 바꾸는 일이 있었다 (전기차 보조금 시험). 제목 검사가 실패했을 때만 새 제목을 쓴다.
+  const titleFailed = failures.some(f => f.startsWith("제목"));
+  const finalTitle = titleFailed ? newTitle : content.title;
+  const repaired = { ...content, title: finalTitle, html: `${newBody}\n${appendix}` };
   // 중간에 실패해도 원본이 깨지지 않도록 임시 파일에 쓴 뒤 바꾼다.
   const tmpPath = `${contentPath}.repair.tmp`;
   writeFileSync(tmpPath, JSON.stringify(repaired, null, 2), "utf-8");
   renameSync(tmpPath, contentPath);
-  console.error(`[repair] Repaired. Title: ${newTitle.slice(0, 60)} | Body: ${plainLength(body)} -> ${plainLength(newBody)} chars`);
+  console.error(`[repair] Repaired. Title${titleFailed ? " (changed)" : " (kept)"}: ${String(finalTitle).slice(0, 60)} | Body: ${plainLength(body)} -> ${plainLength(newBody)} chars`);
 }
 
 main().catch(error => {
