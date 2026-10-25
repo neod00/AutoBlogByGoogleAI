@@ -387,6 +387,38 @@ function normalizeSourceUrl(url: string): string {
   }
 }
 
+// Gemini 검색 연동은 출처를 vertexaisearch 리다이렉트 주소로 준다. 그대로 버리면 참고자료에 링크가 하나도 남지 않으므로
+// 리다이렉트의 Location 헤더로 실제 주소를 얻는다. 실패하면 링크 없이 제목만 남긴다.
+function isGroundingRedirect(url: string): boolean {
+  return /vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\//i.test(url);
+}
+
+async function resolveSourceUrl(rawUrl: string): Promise<string> {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return "";
+  if (!isGroundingRedirect(trimmed)) return normalizeSourceUrl(trimmed);
+  try {
+    const res = await fetch(trimmed, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(6_000) });
+    const location = res.headers.get("location") || "";
+    return location ? normalizeSourceUrl(location) : "";
+  } catch {
+    return "";
+  }
+}
+
+// 독자가 근거로 확인하기 어려운 출처 (SNS, 개인 블로그, 영상). 공식 자료가 아니므로 참고자료에서 뺀다.
+const LOW_QUALITY_SOURCE_PATTERN = /instagram|facebook|youtube|youtu\.be|blog\.naver|cafe\.naver|brunch\.co\.kr|tistory\.com|threads\.net|twitter\.com|(?:^|\/\/|\.)x\.com/i;
+
+function isLowQualitySource(source: SourceRef): boolean {
+  return LOW_QUALITY_SOURCE_PATTERN.test(`${source.url} ${source.publisher} ${source.title}`);
+}
+
+// 정부·공공기관·국제기구 자료를 앞에 둔다.
+function isOfficialSource(source: SourceRef): boolean {
+  return /\.go\.kr|\.or\.kr|\.gov\b|europa\.eu|\.int\b|un\.org|oecd\.org|iea\.org/i.test(source.url)
+    || /부$|청$|공단|위원회|기관|정부|보도자료/.test(source.publisher);
+}
+
 type SourceRef = {
   title: string;
   publisher: string;
@@ -398,7 +430,8 @@ function parseSourceLine(line: string): SourceRef | null {
   if (!cleaned) return null;
 
   const urlMatch = cleaned.match(/https?:\/\/[^\s)>\]]+/i);
-  const url = normalizeSourceUrl(urlMatch?.[0] || "");
+  // 리다이렉트 주소는 buildReferenceSection에서 실제 주소로 푼다.
+  const url = urlMatch?.[0] || "";
   const withoutUrl = urlMatch ? cleaned.replace(urlMatch[0], "").replace(/\s*[-–|]\s*$/, "").trim() : cleaned;
   const parts = withoutUrl.split(/\s+[-–|]\s+/).map(part => part.trim()).filter(Boolean);
 
@@ -409,7 +442,7 @@ function parseSourceLine(line: string): SourceRef | null {
   };
 }
 
-function buildReferenceSection(sourceLines: string[], groundingChunks: any[]): string {
+async function buildReferenceSection(sourceLines: string[], groundingChunks: any[]): Promise<string> {
   const sourceRefs = sourceLines
     .map(parseSourceLine)
     .filter((source): source is SourceRef => Boolean(source));
@@ -418,14 +451,23 @@ function buildReferenceSection(sourceLines: string[], groundingChunks: any[]): s
     .map((chunk: any) => ({
       title: chunk?.web?.title || "",
       publisher: "",
-      url: normalizeSourceUrl(chunk?.web?.uri || ""),
+      url: chunk?.web?.uri || "",
     }))
     .filter((source: SourceRef) => source.title || source.url);
+
+  const candidates = [...sourceRefs, ...groundingRefs].slice(0, 15);
+  const resolved = await Promise.all(candidates.map(async source => ({ ...source, url: await resolveSourceUrl(source.url) })));
+  const usable = resolved.filter(source => !isLowQualitySource(source));
+  const dropped = resolved.length - usable.length;
+  if (dropped > 0) console.error(`[generate] Dropped ${dropped} low-quality sources (SNS/blog/video).`);
+  // 링크가 있는 공식 자료 > 링크가 있는 자료 > 링크 없는 자료 순서. sort는 안정 정렬이라 같은 순위 안에서는 원래 순서를 지킨다.
+  const rank = (source: SourceRef) => (source.url ? 0 : 2) + (isOfficialSource(source) ? 0 : 1);
+  usable.sort((a, b) => rank(a) - rank(b));
 
   const refs: SourceRef[] = [];
   const seen = new Set<string>();
 
-  for (const source of [...sourceRefs, ...groundingRefs]) {
+  for (const source of usable) {
     const key = (source.url || source.title).toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -504,6 +546,83 @@ function applyQualityGateGuards(title: string, html: string): { title: string; h
   return { title: safeTitle, html: safeHtml };
 }
 
+// ── Length control ───────────────────────────────────────────
+// 필수 블록이 많아 모델이 3,500자 넘게 쓰는 일이 잦다. 길면 설명 문장만 줄이는 압축 호출을 한 번 더 한다.
+// 글자 수는 이미지·참고자료·관련글을 붙이기 전 본문 기준이다 (품질 게이트의 본문 분량 기준과 같다).
+const COMPRESS_TRIGGER_CHARS = Number(process.env.COMPRESS_TRIGGER_CHARS || 3300);
+const COMPRESS_TARGET_CHARS = Number(process.env.COMPRESS_TARGET_CHARS || 2800);
+
+function htmlPlainLength(html: string): number {
+  return html.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().length;
+}
+
+function countMatches(html: string, pattern: RegExp): number {
+  return (html.match(pattern) || []).length;
+}
+
+// 압축본이 구조(표, 목록, 소제목, 기준일)를 잃었거나 너무 많이 잘렸으면 원본을 쓴다.
+function isSafeCompression(original: string, compressed: string): boolean {
+  const before = htmlPlainLength(original);
+  const after = htmlPlainLength(compressed);
+  if (after >= before || after < before * 0.5) return false;
+  if (/\[(?:\/)?(?:TITLE|POST|TAGS|SOURCES|IMAGE_KEYWORDS)\]/.test(compressed)) return false;
+  if (countMatches(original, /<table\b/gi) > countMatches(compressed, /<table\b/gi)) return false;
+  if (countMatches(original, /<ol\b/gi) > 0 && countMatches(compressed, /<ol\b/gi) === 0) return false;
+  if (countMatches(compressed, /<h2\b/gi) < Math.min(3, countMatches(original, /<h2\b/gi))) return false;
+  const asOf = /20\d{2}년\s*\d{1,2}월\s*기준/;
+  if (asOf.test(original) && !asOf.test(compressed)) return false;
+  // 고유 수치(반복 제외)가 크게 줄었다면 사실을 잃은 것이다. 반복된 수치를 한 번만 남기는 것은 허용한다.
+  const figures = (h: string) => new Set(h.replace(/<[^>]+>/g, " ").match(/\d[\d,.]*/g) || []);
+  const keptFigures = [...figures(original)].filter(f => figures(compressed).has(f)).length;
+  if (keptFigures < figures(original).size * 0.85) return false;
+  return true;
+}
+
+async function compressLongPost(post: string): Promise<string> {
+  const length = htmlPlainLength(post);
+  if (length <= COMPRESS_TRIGGER_CHARS) return post;
+
+  console.error(`[generate] Body is ${length} chars (> ${COMPRESS_TRIGGER_CHARS}). Compressing to ~${COMPRESS_TARGET_CHARS}...`);
+  const prompt = `아래 HTML 블로그 본문을 모바일 독자가 읽기 쉽게 ${COMPRESS_TARGET_CHARS}자 안팎(태그 제외 순수 텍스트)으로 줄이세요.
+
+줄이는 규칙:
+- 숫자, 날짜, 금액, 기관명, 조건, 예외는 그대로 둡니다. 빼지 마세요.
+- <table>, <ol>, <ul>의 구조와 항목, "YYYY년 M월 기준" 문장은 유지합니다.
+- 줄이는 대상은 설명·배경·수식 문장, 앞 내용을 다시 말하는 문장, 새 사실이 없는 문단입니다.
+- 새 사실이 없는 섹션은 통째로 삭제해도 됩니다. 단, <h2>는 3개 이상 남기세요.
+- 같은 수치를 여러 번 반복한 문장은 한 번만 남깁니다. 같은 금액 묶음(예: 분야별 최대 금액)은 표 하나에만 두고 다른 섹션의 반복은 지웁니다.
+- "가능성 있음", "확인 필요" 같은 메모가 붙은 문장이나 항목은 통째로 지웁니다.
+- 도입부의 블로그 소개 문장, 상투적인 다짐 문장은 지웁니다.
+- 새로운 내용, 새 수치, 새 링크를 추가하지 마세요. 문단은 180자 이내로 유지합니다.
+- 출력은 HTML 본문만 쓰세요. 설명, 코드블록 표시, [POST] 같은 태그는 쓰지 마세요.
+
+[본문]
+${post}`;
+
+  try {
+    const result = await generateContentWithAiFallback(genAI, {
+      model: MAIN_MODEL,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: NO_THINKING,
+    }, 1, "[compress]", { openaiMaxOutputTokens: 8_000, openaiTimeoutMs: 120_000 });
+
+    const compressed = (result.text || "")
+      .replace(/^\s*```(?:html)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+
+    if (!compressed || !isSafeCompression(post, compressed)) {
+      console.error("[generate] Compression rejected (structure or facts lost). Keeping original.");
+      return post;
+    }
+    console.error(`[generate] Compressed: ${length} -> ${htmlPlainLength(compressed)} chars`);
+    return compressed;
+  } catch (error) {
+    console.error("[generate] Compression failed. Keeping original:", error);
+    return post;
+  }
+}
+
 type RssPost = { title: string; link: string };
 
 // RSS 제목은 엔티티가 이중으로 인코딩되어 온다 (예: &amp;mdash;).
@@ -571,7 +690,7 @@ function restoreInternalLinks(html: string, posts: RssPost[]): string {
   );
 }
 
-function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: string): RssPost[] {
+function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: string, bodyHtml = ""): RssPost[] {
   const tokens = new Set([
     ...tokenizeForRelatedPosts(category),
     ...tokenizeForRelatedPosts(currentTitle),
@@ -585,12 +704,14 @@ function pickRelatedPosts(posts: RssPost[], category: string, currentTitle: stri
         if (lowerTitle.includes(token)) score += 1;
       }
       if (post.title === currentTitle) score -= 100;
+      // 본문 마지막 문단에서 이미 링크한 글은 관련 글 상자에 다시 넣지 않는다.
+      if (bodyHtml.includes(post.link)) score -= 100;
       return { ...post, score, idx };
     })
     .sort((a, b) => b.score - a.score || a.idx - b.idx);
 
   const related = scored.filter(p => p.score > 0).slice(0, 3);
-  const fallback = scored.slice(0, 3);
+  const fallback = scored.filter(p => p.score > -50).slice(0, 3);
 
   return (related.length > 0 ? related : fallback).map(({ title, link }) => ({ title, link }));
 }
@@ -678,16 +799,23 @@ async function main() {
   const title = titleMatch ? titleMatch[1].trim() : topic;
   const tags = tagsMatch ? tagsMatch[1].split(",").map(t => t.trim()).filter(Boolean) : [];
 
+  // 모델이 본문 맨 앞에 제목을 한 번 더 쓰는 경우가 있다 (글 제목과 다른 큰 소제목이 첫 줄에 붙음). 첫 문단 앞의 소제목은 지운다.
+  // 바로 뒤에 도입 문단이 오는 경우만 지운다. 도입부 없이 섹션으로 바로 시작하는 글의 진짜 소제목은 건드리지 않는다.
+  post = post.replace(/^\s*<h[1-3][^>]*>(?:(?!<\/?h[1-6]\b)[\s\S])*<\/h[1-3]>\s*(?=<p\b)/i, "");
+
   // Strip accidental reference sections from POST
   post = post.replace(/<h[23][^>]*>\s*(참고|참고:|참고 자료|출처)[^<]*<\/h[23]>[\s\S]*?(?=<h[23]|$)/gi, "");
   post = restoreInternalLinks(post, existingPosts);
+
+  // 이미지·참고자료·관련글을 붙이기 전에 본문 길이를 맞춘다.
+  post = await compressLongPost(post);
 
   // Build a compact, visible reference section from model sources and grounding metadata.
   const groundingMetadata = (result as any).candidates?.[0]?.groundingMetadata;
   const sourceLines = sourcesMatch
     ? sourcesMatch[1].trim().split("\n").map(s => s.trim()).filter(Boolean)
     : [];
-  const referenceSection = buildReferenceSection(sourceLines, groundingMetadata?.groundingChunks || []);
+  const referenceSection = await buildReferenceSection(sourceLines, groundingMetadata?.groundingChunks || []);
 
   // ── Inject images from Pexels ──
   console.error("[generate] Fetching and injecting images...");
@@ -703,7 +831,7 @@ async function main() {
   console.error(`[generate] Category: ${category}`);
 
   // ── Inject related internal links (CTA) ──
-  const relatedPosts = pickRelatedPosts(existingPosts, category, title);
+  const relatedPosts = pickRelatedPosts(existingPosts, category, title, post);
   if (relatedPosts.length > 0) {
     console.error(`[generate] Injecting ${relatedPosts.length} related posts...`);
     let ctaHtml = `
